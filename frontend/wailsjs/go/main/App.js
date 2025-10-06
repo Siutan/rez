@@ -30,10 +30,6 @@ export function GetSummonerProfile() {
   return window['go']['main']['App']['GetSummonerProfile']();
 }
 
-export function Greet(arg1) {
-  return window['go']['main']['App']['Greet'](arg1);
-}
-
 export function IsLCUConnected() {
   return window['go']['main']['App']['IsLCUConnected']();
 }

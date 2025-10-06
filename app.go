@@ -122,14 +122,10 @@ func (a *App) handleLCUConnection() {
 		case <-a.connector.OnDisconnect:
 			a.connInfo = nil
 			runtime.EventsEmit(a.ctx, "lcu:disconnected")
+		case champSelect := <-a.connector.OnChampSelect:
+			runtime.EventsEmit(a.ctx, "lcu:champ-select", champSelect)
 		}
 	}
-}
-
-//TODO: get rid of this
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello %s, It's show time!", name)
 }
 
 // findLeagueWindow finds the League of Legends client window

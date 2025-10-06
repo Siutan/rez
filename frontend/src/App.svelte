@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import logo from "./assets/images/logo-universal.png";
   import {
     GetCurrentSummoner,
     GetSummonerProfile,
@@ -9,14 +8,21 @@
   } from "../wailsjs/go/main/App.js";
   import { EventsOn } from "../wailsjs/runtime/runtime.js";
   import { DDragon } from "./lib/services/ddragon";
-  import MatchHistoryItem from "./lib/components/match-history-item.svelte";
+  import MatchHistoryView from "./lib/components/match-history-view.svelte";
+  import ChampSelectView from "./lib/components/champ-select-view.svelte";
   import type { Match } from "./types/lcu/match";
+
+  // App state
   let lcuConnected = false;
   let summonerData = null;
   let profileData = null;
   let matchHistoryData: { games: { games: Match[] } } = null;
   let errorMessage = "";
   let loading = false;
+
+  // Router state
+  let currentView: "match-history" | "champ-select" = "match-history";
+  let champSelectData = null;
 
   // initialize ddragon by calling it
   DDragon.init();
@@ -36,6 +42,14 @@
       summonerData = null;
       profileData = null;
       matchHistoryData = null;
+      champSelectData = null;
+      currentView = "match-history";
+    });
+
+    EventsOn("lcu:champ-select", (data) => {
+      console.log("Champ Select:", data);
+      champSelectData = data;
+      currentView = "champ-select";
     });
 
     // Check if already connected
@@ -66,9 +80,6 @@
 
       summonerData = summoner;
       profileData = profile;
-      console.log("Summoner:", summoner);
-      console.log("Profile:", profile);
-      console.log("Match History:", matchHistory);
       matchHistoryData = matchHistory as { games: { games: Match[] } };
     } catch (err) {
       console.error("Error loading user data:", err);
@@ -80,18 +91,38 @@
 </script>
 
 <main>
-  <div class="container">
-    <img alt="League Logo" id="logo" src={logo} />
-
-    <div class="status">
-      {#if lcuConnected}
-        <span class="status-indicator connected"></span>
-        <span>League Client Connected</span>
-      {:else}
-        <span class="status-indicator disconnected"></span>
+  <div class="container bg-slate-950">
+    {#if !lcuConnected}
+      <div
+        class="w-full p-2 bg-slate-900/40 rounded-md flex justify-center items-center gap-2"
+      >
+        <div class="w-2 h-2 bg-red-500 rounded-full"></div>
         <span>Waiting for League Client...</span>
-      {/if}
-    </div>
+      </div>
+    {/if}
+
+    <!-- View Navigation -->
+    {#if summonerData && matchHistoryData}
+      <div class="view-tabs">
+        <button
+          class="tab"
+          class:bg-red-500={currentView === "match-history"}
+          on:click={() => (currentView = "match-history")}
+        >
+          Match History
+        </button>
+        {#if champSelectData}
+          <button
+            class="tab"
+            class:active={currentView === "champ-select"}
+            on:click={() => (currentView = "champ-select")}
+          >
+            <span class="live-indicator"></span>
+            Champion Select
+          </button>
+        {/if}
+      </div>
+    {/if}
 
     {#if loading}
       <div class="loading">Loading user data...</div>
@@ -99,20 +130,11 @@
       <div class="error">{errorMessage}</div>
     {:else if summonerData}
       <div class="user-info">
-        <div class="match-history">
-          <h3>Match History</h3>
-          <div class="flex flex-col gap-4">
-            {#each matchHistoryData.games.games as match}
-              <div class="match-history-item">
-                <MatchHistoryItem match={match} />
-              </div>
-            {/each}
-          </div>
-        </div>
-
-        <button class="btn refresh" on:click={loadUserData}>
-          Refresh Data
-        </button>
+        {#if currentView === "match-history"}
+          <MatchHistoryView {matchHistoryData} />
+        {:else if currentView === "champ-select" && champSelectData}
+          <ChampSelectView {champSelectData} />
+        {/if}
       </div>
     {/if}
   </div>
@@ -127,40 +149,6 @@
   .container {
     padding: 1.5rem;
     max-width: 100%;
-  }
-
-  #logo {
-    display: block;
-    width: 80px;
-    height: 80px;
-    margin: 0 auto 1rem;
-  }
-
-  .status {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 0.75rem;
-    margin-bottom: 1rem;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    font-size: 0.9rem;
-  }
-
-  .status-indicator {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    animation: pulse 2s infinite;
-  }
-
-  .status-indicator.connected {
-    background: #4caf50;
-  }
-
-  .status-indicator.disconnected {
-    background: #ff5252;
   }
 
   @keyframes pulse {
@@ -205,93 +193,46 @@
     }
   }
 
-  h2 {
-    margin: 0 0 1.5rem 0;
-    text-align: center;
-    font-size: 1.5rem;
-    color: #f0e6d2;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  }
-
-  h3 {
-    margin: 1.5rem 0 1rem 0;
-    font-size: 1.1rem;
-    color: #c89b3c;
-    border-bottom: 1px solid rgba(200, 155, 60, 0.3);
-    padding-bottom: 0.5rem;
-  }
-
-  .info-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
+  .view-tabs {
+    display: flex;
+    gap: 0.5rem;
     margin-bottom: 1rem;
   }
 
-  .info-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  .info-item.full-width {
-    grid-column: 1 / -1;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-
-  .label {
-    font-weight: 600;
-    color: #a09b8c;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .value {
-    color: #f0e6d2;
-    font-weight: 500;
-  }
-
-  .value.small {
-    font-size: 0.75rem;
-    word-break: break-all;
-    color: #888;
-  }
-
-  .profile-section {
-    margin-top: 1.5rem;
-    padding-top: 1rem;
-  }
-
-  .btn {
-    width: 100%;
-    padding: 0.75rem;
+  .tab {
+    flex: 1;
+    padding: 0.75rem 1rem;
     border: none;
-    border-radius: 6px;
-    background: linear-gradient(135deg, #c89b3c 0%, #f0e6d2 100%);
-    color: #1e2328;
+    background: transparent;
+    color: #888;
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     cursor: pointer;
     transition: all 0.3s ease;
-    margin-top: 1rem;
     text-transform: uppercase;
     letter-spacing: 1px;
+    border-bottom: 3px solid transparent;
+    position: relative;
   }
 
-  .btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(200, 155, 60, 0.4);
+  .live-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4caf50;
+    margin-right: 0.5rem;
+    animation: pulse 2s infinite;
   }
 
-  .btn:active {
-    transform: translateY(0);
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
 
   /* Scrollbar styling */

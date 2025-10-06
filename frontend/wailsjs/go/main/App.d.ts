@@ -15,8 +15,6 @@ export function GetMatchHistory():Promise<Record<string, any>>;
 
 export function GetSummonerProfile():Promise<Record<string, any>>;
 
-export function Greet(arg1:string):Promise<string>;
-
 export function IsLCUConnected():Promise<boolean>;
 
 export function PositionWindow():Promise<string>;

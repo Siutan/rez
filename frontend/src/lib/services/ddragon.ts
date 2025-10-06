@@ -40,10 +40,6 @@ export class DDragon {
      * Accepts either a champion name (string) or champion ID (number) for efficient lookup.
      */
     public static getChampion(championIdentifier: string | number): any | null {
-        console.log({
-            championIdentifier,
-            searchType: typeof championIdentifier === 'number' ? 'championsById' : 'champions',
-        });
         if (typeof championIdentifier === 'number') {
             return this.getCacheData('championsById')?.[championIdentifier] || null;
         } else {

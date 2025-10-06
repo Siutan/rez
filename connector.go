@@ -2,7 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/fsnotify/fsnotify"
 	"github.com/shirou/gopsutil/v3/process"
 )
@@ -24,6 +30,33 @@ type ConnectionInfo struct {
 	Password string
 }
 
+type ChampSelectSession struct {
+	Actions [][]struct {
+		ActorCellID  int    `json:"actorCellId"`
+		ChampionID   int    `json:"championId"`
+		Completed    bool   `json:"completed"`
+		IsAllyAction bool   `json:"isAllyAction"`
+		IsInProgress bool   `json:"isInProgress"`
+		Type         string `json:"type"`
+	} `json:"actions"`
+	Bans struct {
+		MyTeamBans    []int `json:"myTeamBans"`
+		TheirTeamBans []int `json:"theirTeamBans"`
+	} `json:"bans"`
+	MyTeam []struct {
+		CellID           int    `json:"cellId"`
+		AssignedPosition string `json:"assignedPosition"`
+		ChampionID       int    `json:"championId"`
+		SummonerID       int64  `json:"summonerId"`
+	} `json:"myTeam"`
+	LocalPlayerCellID int `json:"localPlayerCellId"`
+	Timer             struct {
+		Phase                   string `json:"phase"`
+		AdjustedTimeLeftInPhase int    `json:"adjustedTimeLeftInPhase"`
+	} `json:"timer"`
+	GameType string `json:"gameType"`
+}
+
 type LCUConnector struct {
 	dirPath         string
 	lockfileWatcher *fsnotify.Watcher
@@ -32,15 +65,20 @@ type LCUConnector struct {
 	mu              sync.Mutex
 	OnConnect       chan ConnectionInfo
 	OnDisconnect    chan struct{}
+	OnChampSelect   chan ChampSelectSession
+	wsConn          *websocket.Conn
+	wsContext       context.Context
+	wsCancel        context.CancelFunc
 }
 
 // -------- PUBLIC METHODS --------
 
 func New(executablePath string) *LCUConnector {
 	conn := &LCUConnector{
-		OnConnect:    make(chan ConnectionInfo),
-		OnDisconnect: make(chan struct{}),
-		stopCh:       make(chan struct{}),
+		OnConnect:     make(chan ConnectionInfo),
+		OnDisconnect:  make(chan struct{}),
+		OnChampSelect: make(chan ChampSelectSession),
+		stopCh:        make(chan struct{}),
 	}
 	if executablePath != "" {
 		conn.dirPath = filepath.Dir(executablePath)
@@ -57,6 +95,7 @@ func (l *LCUConnector) Start() {
 }
 
 func (l *LCUConnector) Stop() {
+	l.clearWebSocket()
 	l.clearLockfileWatcher()
 	l.clearProcessWatcher()
 	close(l.stopCh)
@@ -163,6 +202,10 @@ func (l *LCUConnector) onFileCreated(lockfilePath string) {
 		Username: "riot",
 		Password: parts[3],
 	}
+
+	// Initialize WebSocket connection
+	l.initWebSocket(info)
+
 	select {
 	case l.OnConnect <- info:
 	default:
@@ -170,9 +213,121 @@ func (l *LCUConnector) onFileCreated(lockfilePath string) {
 }
 
 func (l *LCUConnector) onFileRemoved() {
+	l.clearWebSocket()
 	select {
 	case l.OnDisconnect <- struct{}{}:
 	default:
+	}
+}
+
+func (l *LCUConnector) initWebSocket(info ConnectionInfo) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	// Clear existing connection if any
+	if l.wsConn != nil {
+		return
+	}
+
+	// Create context for WebSocket
+	l.wsContext, l.wsCancel = context.WithCancel(context.Background())
+
+	// Build WebSocket URL
+	wsURL := fmt.Sprintf("wss://%s:%s@%s:%s/", info.Username, info.Password, info.Address, info.Port)
+
+	// Configure WebSocket dialer with TLS config
+	dialer := websocket.DialOptions{
+		HTTPClient: &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		},
+	}
+
+	// Connect to WebSocket
+	conn, _, err := websocket.Dial(l.wsContext, wsURL, &dialer)
+	if err != nil {
+		return
+	}
+
+	l.wsConn = conn
+
+	// Start WebSocket listener
+	go l.handleWebSocket()
+}
+
+func (l *LCUConnector) clearWebSocket() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.wsCancel != nil {
+		l.wsCancel()
+		l.wsCancel = nil
+	}
+
+	if l.wsConn != nil {
+		l.wsConn.Close(websocket.StatusNormalClosure, "disconnecting")
+		l.wsConn = nil
+	}
+
+	l.wsContext = nil
+}
+
+func (l *LCUConnector) handleWebSocket() {
+	// Subscribe to champ select events
+	subMsg := []any{5, "OnJsonApiEvent_lol-champ-select_v1_session"}
+	msgBytes, err := json.Marshal(subMsg)
+	if err != nil {
+		return
+	}
+
+	if err := l.wsConn.Write(l.wsContext, websocket.MessageText, msgBytes); err != nil {
+		return
+	}
+
+	// Read messages in a loop
+	for {
+		select {
+		case <-l.wsContext.Done():
+			return
+		default:
+			_, data, err := l.wsConn.Read(l.wsContext)
+			if err != nil {
+				return
+			}
+
+			// Parse WebSocket message
+			var payload []any
+			if err := json.Unmarshal(data, &payload); err != nil || len(payload) < 3 {
+				continue
+			}
+
+			// Check if it's the event we subscribed to
+			eventType, ok := payload[1].(string)
+			if !ok || eventType != "OnJsonApiEvent_lol-champ-select_v1_session" {
+				continue
+			}
+
+			// Parse the event data
+			body, err := json.Marshal(payload[2])
+			if err != nil {
+				continue
+			}
+
+			var champData struct {
+				EventType string             `json:"eventType"`
+				Data      ChampSelectSession `json:"data"`
+			}
+			if err := json.Unmarshal(body, &champData); err != nil {
+				continue
+			}
+
+			// Emit champ select data
+			select {
+			case l.OnChampSelect <- champData.Data:
+			default:
+			}
+		}
 	}
 }
 

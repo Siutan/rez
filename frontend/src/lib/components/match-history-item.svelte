@@ -55,8 +55,6 @@
     spell1 = DDragon.getSummonerSpell(participant.spell1Id.toString());
     spell2 = DDragon.getSummonerSpell(participant.spell2Id.toString());
 
-    console.log({ match, champ, spell1, spell2 });
-
     // Step 2: Fetch images in parallel
     const [
       fetchedChampImg,
@@ -82,16 +80,23 @@
     spellImg2 = fetchedSpellImg2;
     itemIcons = fetchedItemIcons;
 
-    console.log({ champImg, spellImg1, spellImg2, itemIcons });
-
     loading = false;
   });
 </script>
 
 <div
-  class="w-full text-gray-100 rounded-2xl shadow-lg p-4 flex flex-col md:flex-row md:items-center gap-4 border border-gray-800 transition-colors duration-200 hover:to-90%
-  {stats.win ? 'bg-gradient-to-r from-emerald-500 to-10% to-transparent' : 'bg-gradient-to-r from-rose-500 to-10% to-transparent'}"
+  class="relative w-full text-gray-100 rounded-md shadow-lg p-4 flex flex-col md:flex-row md:items-center gap-4 border border-gray-800 overflow-hidden group"
 >
+  <!-- Base gradient layer -->
+  <div
+    class="absolute inset-0 rounded-md {stats.win ? 'bg-gradient-to-r from-emerald-500 to-10% to-transparent' : 'bg-gradient-to-r from-rose-500 to-10% to-transparent'}"
+  ></div>
+  <!-- Hover gradient layer -->
+  <div
+    class="absolute inset-0 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 {stats.win ? 'bg-gradient-to-r from-emerald-500 to-90% to-emerald-950' : 'bg-gradient-to-r from-rose-500 to-90% to-rose-950'}"
+  ></div>
+  <!-- Content wrapper -->
+  <div class="relative z-10 w-full flex flex-col md:flex-row md:items-center gap-4">
   {#if loading}
     <div class="w-full text-center p-8">Loading match data...</div>
   {:else if player}
@@ -100,7 +105,7 @@
         <img
           src={champImg}
           alt={champ?.name}
-          class="w-16 h-16 rounded-xl border-2 border-gray-700 shrink-0 min-w-16"
+          class="w-16 h-16 rounded-md border-2 border-gray-700 shrink-0 min-w-16"
         />
         <div
           class="absolute -bottom-2 -right-2 text-xs bg-gray-800 px-2 py-0.5 rounded-md"
@@ -139,7 +144,7 @@
       </div>
     </div>
 
-    <div class="flex flex-wrap gap-1 justify-start">
+    <div class="flex flex-wrap gap-1 justify-end">
       {#each items as item, i}
         {#if item > 0 && itemIcons[i]}
           <img
@@ -163,11 +168,14 @@
       {/if}
     </div>
 
+    <!-- show this as a tooltop when hovering over the match -->
     <div class="flex items-center justify-between text-right">
       <span class="text-sm font-medium">{match.gameMode}</span>
       <span class="text-xs text-gray-500"
         >{formatDuration(match.gameDuration)}</span
       >
     </div>
+
   {/if}
+  </div>
 </div>
