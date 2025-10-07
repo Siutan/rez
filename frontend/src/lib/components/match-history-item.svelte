@@ -9,8 +9,6 @@
 
   let { match }: Props = $props();
 
-  console.log(match);
-
   let loading = $state(true);
 
   // --- Derived references ---
