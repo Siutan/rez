@@ -38,47 +38,90 @@ type ChampSelectSession struct {
 		IsAllyAction bool   `json:"isAllyAction"`
 		IsInProgress bool   `json:"isInProgress"`
 		Type         string `json:"type"`
+		PickTurn     int    `json:"pickTurn"`
+		Duration     int    `json:"duration"`
+		ID           int    `json:"id"`
 	} `json:"actions"`
 	Bans struct {
 		MyTeamBans    []int `json:"myTeamBans"`
 		TheirTeamBans []int `json:"theirTeamBans"`
+		NumBans       int   `json:"numBans"`
 	} `json:"bans"`
 	MyTeam []struct {
-		CellID           int    `json:"cellId"`
-		AssignedPosition string `json:"assignedPosition"`
-		ChampionID       int    `json:"championId"`
-		SummonerID       int64  `json:"summonerId"`
+		CellID             int    `json:"cellId"`
+		AssignedPosition   string `json:"assignedPosition"`
+		ChampionID         int    `json:"championId"`
+		ChampionPickIntent int    `json:"championPickIntent"`
+		SummonerID         int64  `json:"summonerId"`
+		GameName           string `json:"gameName"`
+		TagLine            string `json:"tagLine"`
+		Puuid              string `json:"puuid"`
+		Spell1ID           int    `json:"spell1Id"`
+		Spell2ID           int    `json:"spell2Id"`
+		SelectedSkinID     int    `json:"selectedSkinId"`
+		Team               int    `json:"team"`
+		WardSkinID         int    `json:"wardSkinId"`
+		NameVisibilityType string `json:"nameVisibilityType"`
 	} `json:"myTeam"`
+	TheirTeam []struct {
+		CellID             int    `json:"cellId"`
+		AssignedPosition   string `json:"assignedPosition"`
+		ChampionID         int    `json:"championId"`
+		ChampionPickIntent int    `json:"championPickIntent"`
+		SummonerID         int64  `json:"summonerId"`
+		GameName           string `json:"gameName"`
+		TagLine            string `json:"tagLine"`
+		Puuid              string `json:"puuid"`
+		Spell1ID           int    `json:"spell1Id"`
+		Spell2ID           int    `json:"spell2Id"`
+		SelectedSkinID     int    `json:"selectedSkinId"`
+		Team               int    `json:"team"`
+		WardSkinID         int    `json:"wardSkinId"`
+		NameVisibilityType string `json:"nameVisibilityType"`
+	} `json:"theirTeam"`
 	LocalPlayerCellID int `json:"localPlayerCellId"`
 	Timer             struct {
 		Phase                   string `json:"phase"`
 		AdjustedTimeLeftInPhase int    `json:"adjustedTimeLeftInPhase"`
+		InternalNowInEpochMs    int64  `json:"internalNowInEpochMs"`
+		TotalTimeInPhase        int    `json:"totalTimeInPhase"`
+		IsInfinite              bool   `json:"isInfinite"`
 	} `json:"timer"`
-	GameType string `json:"gameType"`
+	GameID             int64 `json:"gameId"`
+	QueueID            int   `json:"queueId"`
+	IsCustomGame       bool  `json:"isCustomGame"`
+	IsSpectating       bool  `json:"isSpectating"`
+	Counter            int   `json:"counter"`
+	AllowSkinSelection bool  `json:"allowSkinSelection"`
+	AllowRerolling     bool  `json:"allowRerolling"`
+	BenchEnabled       bool  `json:"benchEnabled"`
+	RerollsRemaining   int   `json:"rerollsRemaining"`
 }
 
 type LCUConnector struct {
-	dirPath         string
-	lockfileWatcher *fsnotify.Watcher
-	processTicker   *time.Ticker
-	stopCh          chan struct{}
-	mu              sync.Mutex
-	OnConnect       chan ConnectionInfo
-	OnDisconnect    chan struct{}
-	OnChampSelect   chan ChampSelectSession
-	wsConn          *websocket.Conn
-	wsContext       context.Context
-	wsCancel        context.CancelFunc
+	dirPath            string
+	lockfileWatcher    *fsnotify.Watcher
+	processTicker      *time.Ticker
+	stopCh             chan struct{}
+	mu                 sync.Mutex
+	OnConnect          chan ConnectionInfo
+	OnDisconnect       chan struct{}
+	OnChampSelect      chan ChampSelectSession
+	OnChampSelectEnded chan struct{}
+	wsConn             *websocket.Conn
+	wsContext          context.Context
+	wsCancel           context.CancelFunc
 }
 
 // -------- PUBLIC METHODS --------
 
 func New(executablePath string) *LCUConnector {
 	conn := &LCUConnector{
-		OnConnect:     make(chan ConnectionInfo),
-		OnDisconnect:  make(chan struct{}),
-		OnChampSelect: make(chan ChampSelectSession),
-		stopCh:        make(chan struct{}),
+		OnConnect:          make(chan ConnectionInfo),
+		OnDisconnect:       make(chan struct{}),
+		OnChampSelect:      make(chan ChampSelectSession),
+		OnChampSelectEnded: make(chan struct{}),
+		stopCh:             make(chan struct{}),
 	}
 	if executablePath != "" {
 		conn.dirPath = filepath.Dir(executablePath)
@@ -322,7 +365,17 @@ func (l *LCUConnector) handleWebSocket() {
 				continue
 			}
 
-			// Emit champ select data
+			// Handle different event types
+			if champData.EventType == "Delete" {
+				// Champion select ended
+				select {
+				case l.OnChampSelectEnded <- struct{}{}:
+				default:
+				}
+				continue
+			}
+
+			// Emit champ select data for Create and Update events
 			select {
 			case l.OnChampSelect <- champData.Data:
 			default:

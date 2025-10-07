@@ -124,6 +124,8 @@ func (a *App) handleLCUConnection() {
 			runtime.EventsEmit(a.ctx, "lcu:disconnected")
 		case champSelect := <-a.connector.OnChampSelect:
 			runtime.EventsEmit(a.ctx, "lcu:champ-select", champSelect)
+		case <-a.connector.OnChampSelectEnded:
+			runtime.EventsEmit(a.ctx, "lcu:champ-select-ended")
 		}
 	}
 }

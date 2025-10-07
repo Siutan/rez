@@ -56,13 +56,21 @@ export class DDragon {
 
         if (patch) {
             // Use cached patch immediately to construct the URL
-            return `${this.BASE_URL}/cdn/${patch}/img/champion/${championName}`;
+            const url = `${this.BASE_URL}/cdn/${patch}/img/champion/${championName}`;
+            if (url.endsWith('.png')) {
+                return url;
+            }
+            return `${url}.png`;
         }
 
         // Fallback: fetch current patch (network request)
         console.warn("No cached patch. Fetching live patch for icon URL.");
         const currentPatch = await this.fetchCurrentPatch();
-        return `${this.BASE_URL}/cdn/${currentPatch}/img/champion/${championName}`;
+        const url = `${this.BASE_URL}/cdn/${currentPatch}/img/champion/${championName}`;
+        if (url.endsWith('.png')) {
+            return url;
+        }
+        return `${url}.png`;
     }
 
     /**

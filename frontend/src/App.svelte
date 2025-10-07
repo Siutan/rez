@@ -48,8 +48,22 @@
 
     EventsOn("lcu:champ-select", (data) => {
       console.log("Champ Select:", data);
-      champSelectData = data;
-      currentView = "champ-select";
+      
+      // Check if this is a valid session
+      if (data && data.localPlayerCellId >= 0 && data.timer?.phase) {
+        champSelectData = data;
+        currentView = "champ-select";
+      } else {
+        // Invalid or ended session, go back to match history
+        champSelectData = null;
+        currentView = "match-history";
+      }
+    });
+
+    EventsOn("lcu:champ-select-ended", () => {
+      console.log("Champion Select Ended");
+      champSelectData = null;
+      currentView = "match-history";
     });
 
     // Check if already connected
@@ -133,7 +147,7 @@
         {#if currentView === "match-history"}
           <MatchHistoryView {matchHistoryData} />
         {:else if currentView === "champ-select" && champSelectData}
-          <ChampSelectView {champSelectData} />
+          <ChampSelectView bind:champSelectData={champSelectData} />
         {/if}
       </div>
     {/if}
