@@ -6,9 +6,9 @@ import {
   getLatestDDragonVersion, 
   getChampionList,
   getUGGPrimaryRoles,
-  versionToPatchSlug
 } from './src/db/data/champion-builds';
 import { determinePrimaryRole } from './src/db/data/champion-builds/parser';
+import { versionToPatch } from './src/db/data/utils';
 
 const ROLE_INDEX_TO_NAME: Record<number, string> = {
   1: 'jungle',
@@ -123,8 +123,8 @@ async function debugDatabase() {
       console.log('\n🔍 CHECKING FOR MISSING CHAMPIONS...\n');
       
       const version = await getLatestDDragonVersion();
-      const patch = versionToPatchSlug(version);
-      const championList = await getChampionList(version);
+      const patch = versionToPatch(version.toString());
+      const championList = await getChampionList(version.toString());
       const allChampions = Object.values(championList);
       
       const dbChampions = await turso.execute(`

@@ -1,38 +1,79 @@
 import { parseUGG } from "./parser";
 import type { RawPayload } from "./types";
+import {
+  getDDragonVersion,
+  versionToPatch,
+  getUGGVersions,
+  getChampionRankingVersion,
+  buildUGGChampionRankingUrl,
+  fetchUGGWithFallback,
+  PatchNotFoundError,
+  logFetchStart,
+  logFetchSuccess,
+  logFetchWarning,
+} from "../utils";
 
-export async function fetchAndParse(): Promise<ReturnType<typeof parseUGG>> {
-  // get patch version from https://ddragon.leagueoflegends.com/api/versions.json
-  const versionsRes = await fetch("https://ddragon.leagueoflegends.com/api/versions.json", { cache: "no-store" });
-  if (!versionsRes.ok) throw new Error(`Versions fetch failed: ${versionsRes.status} ${versionsRes.statusText}`);
-  const versions = await versionsRes.json() as string[];
-
-  // pick first item in array
-  const latestVersion = versions[0];
-
-  // format take split by . and take first two numbers, join with _
-  const patchVersion = latestVersion.split('.').slice(0, 2).join('_');
-
-  const uggVersionsRes = await fetch("https://static.bigbrain.gg/assets/lol/riot_patch_update/prod/ugg/ugg-api-versions.json", { cache: "no-store" });
-  if (!uggVersionsRes.ok) throw new Error(`UGG versions fetch failed: ${uggVersionsRes.status} ${uggVersionsRes.statusText}`);
-  const uggVersions = await uggVersionsRes.json() as Record<string, any>;
-
-  // get object with key as patch version
-  const patchData = uggVersions[patchVersion];
-  if (!patchData) throw new Error(`No UGG data found for patch version: ${patchVersion}`);
-
-  // get champion_ranking version from object
-  const championRankingVersion = patchData.champion_ranking;
-  if (!championRankingVersion) throw new Error(`No champion_ranking version found for patch: ${patchVersion}`);
-
-  const uggApiVersion = patchData.champion_ranking.split('.').slice(0, 2).join('.');
-
-
-  // build url with patch version and champion_ranking version
-  const url = `https://stats2.u.gg/lol/${uggApiVersion}/champion_ranking/world/${patchVersion}/ranked_solo_5x5/emerald_plus/${championRankingVersion}.json`;
-  console.log(url);
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
-  const raw = (await res.json()) as RawPayload;
-  return parseUGG(raw);
+export async function fetchAndParse(): Promise<{
+  parsed: ReturnType<typeof parseUGG>;
+  patch: string;
+  currentPatch: string;
+  usedFallback: boolean;
+}> {
+  logFetchStart('champion stats');
+  
+  // Get latest version
+  const latestVersion = await getDDragonVersion({ cache: 'no-store' });
+  const currentPatch = versionToPatch(latestVersion);
+  
+  console.log(`📊 Using patch ${currentPatch}`);
+  
+  // Get UGG versions data
+  const versions = await getUGGVersions({ cache: 'no-store' });
+  
+  // Try to fetch with fallback patches
+  const patches = [currentPatch];
+  const prevPatch1 = currentPatch.split('_').map((v, i) => i === 1 ? String(parseInt(v) - 1) : v).join('_');
+  const prevPatch2 = currentPatch.split('_').map((v, i) => i === 1 ? String(parseInt(v) - 2) : v).join('_');
+  patches.push(prevPatch1, prevPatch2);
+  
+  let result: { data: RawPayload; patch: string } | null = null;
+  
+  for (const p of patches) {
+    const patchData = versions[p];
+    
+    if (!patchData?.champion_ranking) {
+      continue;
+    }
+    
+    const championRankingVersion = patchData.champion_ranking;
+    const url = buildUGGChampionRankingUrl(p, 'emerald_plus', championRankingVersion);
+    
+    try {
+      const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
+      if (response.ok) {
+        const data = await response.json() as RawPayload;
+        result = { data, patch: p };
+        
+        if (p !== currentPatch) {
+          logFetchWarning(`Using fallback patch ${p} for champion stats`);
+        }
+        break;
+      }
+    } catch (err) {
+      // Try next patch
+      continue;
+    }
+  }
+  
+  if (!result) {
+    throw new PatchNotFoundError(currentPatch, patches);
+  }
+  
+  logFetchSuccess('champion stats');
+  return {
+    parsed: parseUGG(result.data),
+    patch: result.patch,
+    currentPatch,
+    usedFallback: result.patch !== currentPatch,
+  };
 }

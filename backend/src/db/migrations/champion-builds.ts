@@ -3,8 +3,34 @@ import { fetchAllChampionBuilds } from '../data/champion-builds';
 import { buildAIPrompt } from '../data/champion-builds/parser';
 import { batchClassifyChampions, isAIServiceAvailable } from '../../services/ai/champion-classifier';
 import type { ChampionBuild, ChampionAttributes } from '../data/champion-builds/types';
+import {
+  isDataStale,
+  getCurrentTimestamp,
+  formatDuration,
+  TIME_CONSTANTS,
+} from './utils';
 
-const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days (builds change less frequently)
+const STALE_THRESHOLD_MS = TIME_CONSTANTS.ONE_WEEK;
+
+/**
+ * Get the current patch stored in the database
+ */
+async function getCurrentDbPatch(): Promise<string | null> {
+  try {
+    const result = await turso.execute(`
+      SELECT patch FROM champion_builds 
+      LIMIT 1
+    `);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    return result.rows[0].patch as string;
+  } catch (err) {
+    return null;
+  }
+}
 
 /**
  * Create database schema for champion builds and AI attributes
@@ -59,37 +85,13 @@ export async function createChampionBuildsSchema() {
  * Check if build data is stale
  */
 async function isBuildDataStale(): Promise<boolean> {
-  try {
-    const result = await turso.execute(`
-      SELECT last_updated_at, COUNT(*) as count FROM champion_builds
-    `);
-
-    if (result.rows.length === 0 || result.rows[0].count === 0) {
-      return true; // No data exists
-    }
-
-    const count = result.rows[0].count as number;
-    const lastUpdated = result.rows[0].last_updated_at as string;
-    const lastUpdatedTime = new Date(lastUpdated).getTime();
-    const now = Date.now();
-    const isStale = (now - lastUpdatedTime) > STALE_THRESHOLD_MS;
-
-    // Also refresh if we have suspiciously few builds (less than 165 suggests incomplete fetch)
-    // Note: Out of ~171 champions, all should have U.GG build data
-    if (count < 165) {
-      console.log(`⚠️  Only ${count} builds found (expected ~171), forcing refresh...`);
-      return true;
-    }
-
-    if (!isStale) {
-      console.log(`📊 Build data is fresh (updated ${new Date(lastUpdated).toLocaleString()}, ${count} builds)`);
-    }
-
-    return isStale;
-  } catch (err) {
-    console.log('⚠️  Could not check build data staleness, will refresh:', err);
-    return true;
-  }
+  return isDataStale({
+    tableName: 'champion_builds',
+    thresholdMs: STALE_THRESHOLD_MS,
+    minRecordCount: 165,
+    expectedRecordCount: 171,
+    logPrefix: 'Build data',
+  });
 }
 
 /**
@@ -162,8 +164,19 @@ export async function populateChampionBuilds() {
 
     console.log('🔄 Fetching champion builds...');
 
-    const { builds, version, patch } = await fetchAllChampionBuilds();
-    const timestamp = new Date().toISOString();
+    const fetchResult = await fetchAllChampionBuilds();
+    const { builds, version, patch, currentPatch, usedFallback } = fetchResult;
+    const timestamp = getCurrentTimestamp();
+
+    // Check if using fallback patch and if it matches current DB patch
+    if (usedFallback) {
+      const dbPatch = await getCurrentDbPatch();
+      if (dbPatch === patch) {
+        console.log(`✅ Fallback patch ${patch} matches current DB data, skipping update`);
+        console.log(`   (No new data available for patch ${currentPatch})`);
+        return;
+      }
+    }
 
     console.log(`📦 Processing ${builds.length} champion builds for patch ${patch}...`);
 
@@ -179,12 +192,12 @@ export async function populateChampionBuilds() {
     // Execute batch (batch operations are atomic in Turso)
     await turso.batch(buildBatch, 'write');
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`✅ Champion builds updated successfully in ${elapsed}s`);
+    const elapsed = formatDuration(Date.now() - startTime);
+    console.log(`✅ Champion builds updated successfully in ${elapsed}`);
     console.log(`   └─ ${builds.length} builds for patch ${patch}`);
   } catch (err) {
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.error(`❌ Champion builds migration failed after ${elapsed}s:`, err);
+    const elapsed = formatDuration(Date.now() - startTime);
+    console.error(`❌ Champion builds migration failed after ${elapsed}:`, err);
     throw err;
   }
 }
@@ -265,12 +278,12 @@ export async function populateChampionAttributes() {
       maxRetries: 3,
     });
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`✅ AI attributes updated successfully in ${elapsed}s`);
+    const elapsed = formatDuration(Date.now() - startTime);
+    console.log(`✅ AI attributes updated successfully in ${elapsed}`);
     console.log(`   └─ ${attributes.length} champions classified and written to database`);
   } catch (err) {
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.error(`❌ AI classification failed after ${elapsed}s:`, err);
+    const elapsed = formatDuration(Date.now() - startTime);
+    console.error(`❌ AI classification failed after ${elapsed}:`, err);
     throw err;
   }
 }

@@ -6,26 +6,28 @@ import type {
   ROLE_INDEX_TO_NAME,
 } from './types';
 import { parseBuildData, determinePrimaryRole } from './parser';
+import {
+  DDRAGON_BASE,
+  getDDragonVersion,
+  getCachedDDragonVersion,
+  versionToPatch,
+  fetchWithRetry,
+  fetchUGGWithFallback,
+  buildUGGOverviewUrl,
+  buildUGGPrimaryRolesUrl,
+  logFetchStart,
+  logFetchSuccess,
+  logFetchWarning,
+} from '../utils';
 
 export * from './types';
 export * from './parser';
 
-const DDRAGON_BASE = 'https://ddragon.leagueoflegends.com';
-const UGG_STATS_BASE = process.env.UGG_STATS_BASE || 'https://stats2.u.gg/lol/1.5';
-
 /**
- * Get latest DataDragon version
+ * Get latest DataDragon version (with caching)
  */
 export async function getLatestDDragonVersion(): Promise<string> {
-  const url = `${DDRAGON_BASE}/api/versions.json`;
-  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch DDragon versions: ${response.status}`);
-  }
-  
-  const versions: string[] = await response.json();
-  return versions[0];
+  return getCachedDDragonVersion();
 }
 
 /**
@@ -33,14 +35,8 @@ export async function getLatestDDragonVersion(): Promise<string> {
  */
 export async function getChampionList(version: string): Promise<Record<string, DDragonChampion>> {
   const url = `${DDRAGON_BASE}/cdn/${version}/data/en_US/champion.json`;
-  const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch champion list: ${response.status}`);
-  }
-  
-  const data = await response.json();
-  return data.data;
+  const response = await fetchWithRetry<{ data: Record<string, DDragonChampion> }>(url);
+  return response.data;
 }
 
 /**
@@ -48,14 +44,8 @@ export async function getChampionList(version: string): Promise<Record<string, D
  */
 export async function getChampionData(version: string, championId: string): Promise<DDragonChampion> {
   const url = `${DDRAGON_BASE}/cdn/${version}/data/en_US/champion/${championId}.json`;
-  const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch champion ${championId}: ${response.status}`);
-  }
-  
-  const data = await response.json();
-  return data.data[championId];
+  const response = await fetchWithRetry<{ data: Record<string, DDragonChampion> }>(url);
+  return response.data[championId];
 }
 
 /**
@@ -63,63 +53,49 @@ export async function getChampionData(version: string, championId: string): Prom
  */
 export async function getItemsData(version: string): Promise<Record<string, DDragonItem>> {
   const url = `${DDRAGON_BASE}/cdn/${version}/data/en_US/item.json`;
-  const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch items: ${response.status}`);
-  }
-  
-  const data = await response.json();
-  return data.data;
+  const response = await fetchWithRetry<{ data: Record<string, DDragonItem> }>(url);
+  return response.data;
 }
 
 /**
- * Get primary roles mapping from U.GG
+ * Get primary roles mapping from U.GG with fallback
  */
-export async function getUGGPrimaryRoles(patch: string): Promise<UGGPrimaryRoles> {
-  // Example: https://stats2.u.gg/lol/1.5/primary_roles/15_19/1.5.0.json
-  const url = `${UGG_STATS_BASE}/primary_roles/${patch}/1.5.0.json`;
-  const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
+export async function getUGGPrimaryRoles(patch: string): Promise<{ data: UGGPrimaryRoles; patch: string; usedFallback: boolean }> {
+  const result = await fetchUGGWithFallback<UGGPrimaryRoles>(
+    (p) => `${buildUGGPrimaryRolesUrl(p)}`,
+    patch
+  );
   
-  if (!response.ok) {
-    throw new Error(`Failed to fetch U.GG primary roles: ${response.status}`);
+  if (!result) {
+    throw new Error(`Failed to fetch primary roles for patch ${patch} and fallbacks`);
   }
   
-  return response.json();
+  return {
+    data: result.data,
+    patch: result.patch,
+    usedFallback: result.patch !== patch,
+  };
 }
 
 /**
- * Get champion build overview from U.GG
+ * Get champion build overview from U.GG with fallback
  */
 export async function getUGGOverview(
   patch: string,
   championKey: string
 ): Promise<any | null> {
-  // Example: https://stats2.u.gg/lol/1.5/overview/15_19/ranked_solo_5x5/103/1.5.0.json
-  const url = `${UGG_STATS_BASE}/overview/${patch}/ranked_solo_5x5/${championKey}/1.5.0.json`;
+  const result = await fetchUGGWithFallback<any>(
+    (p) => buildUGGOverviewUrl(p, championKey),
+    patch,
+    { fallbackCount: 2 } // Only try current and 1 fallback for individual champions
+  );
   
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
-    
-    if (!response.ok) {
-      console.warn(`U.GG overview not found for champion ${championKey} (${response.status})`);
-      return null;
-    }
-    
-    return response.json();
-  } catch (err) {
-    console.warn(`Failed to fetch U.GG overview for champion ${championKey}:`, err);
+  if (!result) {
+    logFetchWarning(`No U.GG overview data found for champion ${championKey}`);
     return null;
   }
-}
-
-/**
- * Convert DDragon version to U.GG patch slug
- * Example: "14.23.1" -> "14_23"
- */
-export function versionToPatchSlug(version: string): string {
-  const parts = version.split('.');
-  return `${parts[0]}_${parts[1]}`;
+  
+  return result.data;
 }
 
 /**
@@ -132,7 +108,7 @@ export async function fetchChampionBuild(
   primaryRolesMap: UGGPrimaryRoles,
   roleIndexToName: typeof ROLE_INDEX_TO_NAME
 ): Promise<ChampionBuild | null> {
-  const patch = versionToPatchSlug(version);
+  const patch = versionToPatch(version);
   
   // Determine primary role
   const primaryRoles = primaryRolesMap[champion.key] || primaryRolesMap[champion.id];
@@ -213,24 +189,34 @@ export async function fetchAllChampionBuilds(): Promise<{
   builds: ChampionBuild[];
   version: string;
   patch: string;
+  currentPatch: string;
+  usedFallback: boolean;
 }> {
-  console.log('📦 Fetching initial data in parallel...');
+  logFetchStart('champion builds');
   
   // Fetch version first, then parallelize dependent fetches
   const version = await getLatestDDragonVersion();
-  const patch = versionToPatchSlug(version);
+  const currentPatch = versionToPatch(version);
   
-  console.log(`📦 Using version ${version} (patch ${patch})`);
+  console.log(`📦 Using version ${version} (patch ${currentPatch})`);
   
   // Fetch all static data in parallel
-  const [championList, itemsData, primaryRoles] = await Promise.all([
+  let primaryRolesResult: { data: UGGPrimaryRoles; patch: string; usedFallback: boolean } | null = null;
+  
+  const [championList, itemsData] = await Promise.all([
     getChampionList(version),
     getItemsData(version),
-    getUGGPrimaryRoles(patch).catch((err) => {
-      console.warn('Failed to fetch U.GG primary roles, will use tag-based fallback', err);
-      return {} as UGGPrimaryRoles;
-    }),
   ]);
+  
+  try {
+    primaryRolesResult = await getUGGPrimaryRoles(currentPatch);
+  } catch (err) {
+    console.warn('Failed to fetch U.GG primary roles, will use tag-based fallback', err);
+  }
+  
+  const primaryRoles = primaryRolesResult?.data || {} as UGGPrimaryRoles;
+  const patch = primaryRolesResult?.patch || currentPatch;
+  const usedFallback = primaryRolesResult?.usedFallback || false;
   
   console.log(`✅ Fetched champion list (${Object.keys(championList).length} champions) and items data`);
   
@@ -303,6 +289,8 @@ export async function fetchAllChampionBuilds(): Promise<{
     builds,
     version,
     patch,
+    currentPatch,
+    usedFallback,
   };
 }
 

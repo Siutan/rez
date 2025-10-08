@@ -103,7 +103,12 @@ CREATE TABLE champion_attributes (
 ```typescript
 import { fetchAllChampionBuilds } from './db/data/champion-builds';
 
-const { builds, version, patch } = await fetchAllChampionBuilds();
+const { builds, version, patch, currentPatch, usedFallback } = await fetchAllChampionBuilds();
+
+// If currentPatch data is unavailable, the system automatically tries previous patches
+if (usedFallback) {
+  console.log(`Using fallback patch ${patch} (current: ${currentPatch})`);
+}
 
 console.log(builds[0]);
 // {

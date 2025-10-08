@@ -1,7 +1,34 @@
 import { turso } from '../turso';
 import { fetchAndParse } from '../data/champion-stats';
+import {
+  isDataStale,
+  formatDuration,
+  TIME_CONSTANTS,
+  versionToPatch,
+} from './utils';
 
-const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
+const STALE_THRESHOLD_MS = TIME_CONSTANTS.ONE_DAY;
+
+/**
+ * Get the current patch stored in the database
+ */
+async function getCurrentDbPatch(): Promise<string | null> {
+  try {
+    const result = await turso.execute(`
+      SELECT patch FROM champion_stats 
+      WHERE patch != 'unknown'
+      LIMIT 1
+    `);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    return result.rows[0].patch as string;
+  } catch (err) {
+    return null;
+  }
+}
 
 /**
  * Create database schema (runs synchronously before server starts)
@@ -11,6 +38,7 @@ export async function createSchema() {
     CREATE TABLE IF NOT EXISTS champion_stats (
       champion_id       TEXT    NOT NULL,
       role              TEXT    NOT NULL,
+      patch             TEXT    NOT NULL DEFAULT 'unknown',
       matches           INTEGER NOT NULL,
       win_rate          REAL    NOT NULL,
       pick_rate         REAL    NOT NULL,
@@ -31,6 +59,7 @@ export async function createSchema() {
     CREATE TABLE IF NOT EXISTS worst_matchups (
       champion_id   TEXT NOT NULL,
       role          TEXT NOT NULL,
+      patch         TEXT NOT NULL DEFAULT 'unknown',
       opp_champion  INTEGER NOT NULL,
       wins          INTEGER NOT NULL,
       matches       INTEGER NOT NULL,
@@ -44,34 +73,12 @@ export async function createSchema() {
 /**
  * Check if data is stale and needs refresh
  */
-async function isDataStale(): Promise<boolean> {
-  try {
-    const result = await turso.execute(`
-      SELECT last_updated_at FROM champion_stats LIMIT 1
-    `);
-    
-    if (result.rows.length === 0) {
-      return true; // No data exists
-    }
-
-    const lastUpdated = result.rows[0].last_updated_at as string | null;
-    if (!lastUpdated) {
-      return true;
-    }
-
-    const lastUpdatedTime = new Date(lastUpdated).getTime();
-    const now = Date.now();
-    const isStale = (now - lastUpdatedTime) > STALE_THRESHOLD_MS;
-    
-    if (!isStale) {
-      console.log(`📊 Data is fresh (updated ${new Date(lastUpdated).toLocaleString()})`);
-    }
-    
-    return isStale;
-  } catch (err) {
-    console.log('⚠️  Could not check data staleness, will refresh:', err);
-    return true;
-  }
+async function isStatsDataStale(): Promise<boolean> {
+  return isDataStale({
+    tableName: 'champion_stats',
+    thresholdMs: STALE_THRESHOLD_MS,
+    logPrefix: 'Stats data',
+  });
 }
 
 /**
@@ -82,7 +89,7 @@ export async function populateChampionStats() {
   
   try {
     // Check if refresh is needed
-    if (!(await isDataStale())) {
+    if (!(await isStatsDataStale())) {
       console.log('✅ Champion stats are up to date, skipping refresh');
       return;
     }
@@ -90,10 +97,21 @@ export async function populateChampionStats() {
     console.log('🔄 Fetching latest champion stats...');
     
     // Fetch + parse with dynamic URL generation
-    const parsed = await fetchAndParse();
+    const fetchResult = await fetchAndParse();
+    const { parsed, patch, currentPatch, usedFallback } = fetchResult;
     const { data } = parsed;
     const lastUpdated = data.last_updated_at ?? null;
     const totalMatches = data.queue_type_total_matches;
+
+    // Check if using fallback patch and if it matches current DB patch
+    if (usedFallback) {
+      const dbPatch = await getCurrentDbPatch();
+      if (dbPatch === patch) {
+        console.log(`✅ Fallback patch ${patch} matches current DB data, skipping update`);
+        console.log(`   (No new data available for patch ${currentPatch})`);
+        return;
+      }
+    }
 
     // Count totals for progress tracking
     let totalChampions = 0;
@@ -110,11 +128,12 @@ export async function populateChampionStats() {
     // Prepare SQL statements
     const upsertChampion = `
       INSERT INTO champion_stats (
-        champion_id, role, matches, win_rate, pick_rate, ban_rate,
+        champion_id, role, patch, matches, win_rate, pick_rate, ban_rate,
         avg_damage, avg_gold, avg_cs, avg_kda, tier_pick_rate, tier_stdevs,
         last_updated_at, queue_total_match
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(champion_id, role) DO UPDATE SET
+        patch = excluded.patch,
         matches = excluded.matches,
         win_rate = excluded.win_rate,
         pick_rate = excluded.pick_rate,
@@ -131,9 +150,10 @@ export async function populateChampionStats() {
 
     const upsertMatchup = `
       INSERT INTO worst_matchups (
-        champion_id, role, opp_champion, wins, matches, win_rate, opp_win_rate
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        champion_id, role, patch, opp_champion, wins, matches, win_rate, opp_win_rate
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(champion_id, role, opp_champion) DO UPDATE SET
+        patch = excluded.patch,
         wins = excluded.wins,
         matches = excluded.matches,
         win_rate = excluded.win_rate,
@@ -154,6 +174,7 @@ export async function populateChampionStats() {
           args: [
             c.champion_id,
             role,
+            patch,
             c.matches,
             c.win_rate,
             c.pick_rate,
@@ -176,6 +197,7 @@ export async function populateChampionStats() {
             args: [
               c.champion_id,
               role,
+              patch,
               w.champion_id,
               w.wins,
               w.matches,
@@ -210,16 +232,17 @@ export async function populateChampionStats() {
       
       await turso.execute('COMMIT');
       
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`✅ Champion stats updated successfully in ${elapsed}s`);
+      const elapsed = formatDuration(Date.now() - startTime);
+      console.log(`✅ Champion stats updated successfully in ${elapsed}`);
       console.log(`   └─ ${totalChampions} champions, ${totalMatchups} matchups`);
     } catch (err) {
       console.error('❌ Failed to update champion stats:', err);
+      await turso.execute('ROLLBACK');
       throw err;
     }
   } catch (err) {
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.error(`❌ Champion stats migration failed after ${elapsed}s:`, err);
+    const elapsed = formatDuration(Date.now() - startTime);
+    console.error(`❌ Champion stats migration failed after ${elapsed}:`, err);
     throw err;
   }
 }
