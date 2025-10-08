@@ -1,5 +1,5 @@
 import { turso } from '../turso';
-import { fetchAndParse } from '../../services/data/champion-stats';
+import { fetchAndParse } from '../data/champion-stats';
 
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -214,7 +214,6 @@ export async function populateChampionStats() {
       console.log(`✅ Champion stats updated successfully in ${elapsed}s`);
       console.log(`   └─ ${totalChampions} champions, ${totalMatchups} matchups`);
     } catch (err) {
-      await turso.execute('ROLLBACK');
       console.error('❌ Failed to update champion stats:', err);
       throw err;
     }

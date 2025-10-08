@@ -3,10 +3,13 @@
   "version": "1.0.50",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun run --watch src/index.ts"
+    "dev": "bun run --watch src/index.ts",
+    "migrate": "bun run src/db/migrations/run-migrations.ts",
+    "debug": "bun run debug-db.ts"
   },
   "dependencies": {
     "@elysiajs/cron": "^1.4.1",
+    "@google/genai": "^1.22.0",
     "@libsql/client": "^0.15.15",
     "elysia": "latest"
   },
