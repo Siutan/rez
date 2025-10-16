@@ -2,7 +2,7 @@ import { turso } from '../turso';
 import { fetchAllChampionBuilds } from '../data/champion-builds';
 import { buildAIPrompt } from '../data/champion-builds/parser';
 import { batchClassifyChampions, isAIServiceAvailable } from '../../services/ai/champion-classifier';
-import type { ChampionBuild, ChampionAttributes } from '../data/champion-builds/types';
+import type { ChampionBuild } from '../data/champion-builds/types';
 import {
   isDataStale,
   getCurrentTimestamp,

@@ -7,6 +7,8 @@ export async function createUserStatsSchema() {
   await turso.execute(`
     CREATE TABLE IF NOT EXISTS user_champion_stats (
       puuid             TEXT    NOT NULL,
+      riot_user_name    TEXT    NOT NULL,
+      riot_tag_line     TEXT    NOT NULL,
       region_id         TEXT    NOT NULL,
       season_id         INTEGER NOT NULL,
       champion_id       INTEGER NOT NULL,

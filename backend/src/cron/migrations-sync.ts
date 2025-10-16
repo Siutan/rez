@@ -27,16 +27,10 @@ export const migrationsSync = cron({
         console.log('🤖 Running AI classification...');
         await populateChampionAttributes();
 
-        // Champion counters (optional - uncomment to enable auto-population)
-        // This intelligently checks if:
-        //   1. A new patch exists
-        //   2. The patch is at least 1 week old (for data quality)
-        //   3. Counter data hasn't been populated yet for this patch
-        // If all conditions are met, it populates counter data automatically.
-        //
-        // Uncomment the line below and provide champion IDs to enable:
-        // console.log('🎯 Checking champion counters...');
-        // await autoPopulateCountersIfNeeded([134, 103, 86]); // Add your champion IDs
+        // Champion counters:
+        // commented out because each champion takes a long time to populate and theres like 170 of them
+        // figure this out later when we have a better way to populate them
+        // await autoPopulateCountersIfNeeded([134, 103, 86]);
 
         console.log('✅ Migrations Sync Complete')
     }

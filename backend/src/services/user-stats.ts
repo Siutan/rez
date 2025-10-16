@@ -5,23 +5,29 @@ import type { ParsedUserStats } from '../db/data/user-stats';
 /**
  * Upsert user stats for a specific player
  */
-export async function upsertUserStats(stats: ParsedUserStats) {
+export async function upsertUserStats(
+  stats: ParsedUserStats,
+  riotUserName: string,
+  riotTagLine: string
+) {
   const startTime = Date.now();
 
   try {
-    console.log(`Upserting stats for ${stats.puuid} (${stats.champions.length} champions)...`);
+    console.log(`Upserting stats for ${riotUserName}#${riotTagLine} (${stats.champions.length} champions)...`);
 
     const upsertSql = `
       INSERT INTO user_champion_stats (
-        puuid, region_id, season_id, champion_id,
+        puuid, riot_user_name, riot_tag_line, region_id, season_id, champion_id,
         assists, cs, damage, damage_taken, deaths,
         double_kills, first_place, gold, kills,
         max_deaths, max_kills, penta_kills, quadra_kills,
         total_matches, total_placement, triple_kills, wins,
         win_rate, avg_kda, avg_cs, avg_damage, avg_damage_taken, avg_gold,
         last_updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(puuid, champion_id) DO UPDATE SET
+        riot_user_name = excluded.riot_user_name,
+        riot_tag_line = excluded.riot_tag_line,
         region_id = excluded.region_id,
         season_id = excluded.season_id,
         assists = excluded.assists,
@@ -58,6 +64,8 @@ export async function upsertUserStats(stats: ParsedUserStats) {
         sql: upsertSql,
         args: [
           stats.puuid,
+          riotUserName,
+          riotTagLine,
           stats.regionId,
           stats.seasonId,
           champ.championId,
@@ -93,13 +101,11 @@ export async function upsertUserStats(stats: ParsedUserStats) {
     await turso.execute('BEGIN');
     try {
       await turso.batch(batch, 'write');
-      await turso.execute('COMMIT');
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
       console.log(`✅ User stats updated successfully in ${elapsed}s`);
-      console.log(`   └─ ${stats.champions.length} champions for ${stats.puuid}`);
+      console.log(`   └─ ${stats.champions.length} champions for ${riotUserName}#${riotTagLine}`);
     } catch (err) {
-      await turso.execute('ROLLBACK');
       console.error('❌ Failed to update user stats:', err);
       throw err;
     }
@@ -127,22 +133,22 @@ export async function fetchAndStoreUserStats(params: {
     queueType: [400, 420, 440], // normal draft, ranked solo, ranked flex
   });
 
-  await upsertUserStats(stats);
+  await upsertUserStats(stats, params.riotUserName, params.riotTagLine);
 
   return stats;
 }
 
 /**
- * Get user stats from database
+ * Get user stats from database by username and tagline
  */
-export async function getUserStats(puuid: string) {
+export async function getUserStats(riotUserName: string, riotTagLine: string) {
   const result = await turso.execute({
     sql: `
       SELECT * FROM user_champion_stats
-      WHERE puuid = ?
+      WHERE riot_user_name = ? AND riot_tag_line = ?
       ORDER BY total_matches DESC
     `,
-    args: [puuid],
+    args: [riotUserName, riotTagLine],
   });
 
   return result.rows;

@@ -229,15 +229,13 @@ export async function populateChampionStats() {
       
       console.log(`  📊 Inserting ${matchupBatch.length} matchup records...`);
       await turso.batch(matchupBatch, 'write');
-      
-      await turso.execute('COMMIT');
+    
       
       const elapsed = formatDuration(Date.now() - startTime);
       console.log(`✅ Champion stats updated successfully in ${elapsed}`);
       console.log(`   └─ ${totalChampions} champions, ${totalMatchups} matchups`);
     } catch (err) {
       console.error('❌ Failed to update champion stats:', err);
-      await turso.execute('ROLLBACK');
       throw err;
     }
   } catch (err) {

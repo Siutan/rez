@@ -33,12 +33,12 @@ export const userStatsRoute = new Elysia({ prefix: "/user-stats" })
       }),
     }
   )
-  // Get user stats by PUUID
+  // Get user stats by username and tagline
   .get(
-    "/:puuid",
+    "/:riotUserName/:riotTagLine",
     async ({ params }) => {
       try {
-        const stats = await getUserStats(params.puuid);
+        const stats = await getUserStats(params.riotUserName, params.riotTagLine);
 
         return {
           success: true,
@@ -54,7 +54,8 @@ export const userStatsRoute = new Elysia({ prefix: "/user-stats" })
     {
       tags: ["user-stats"],
       params: t.Object({
-        puuid: t.String(),
+        riotUserName: t.String(),
+        riotTagLine: t.String(),
       }),
     }
   );

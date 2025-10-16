@@ -1,5 +1,6 @@
 import { createSchema, populateChampionStats } from "./champion-stats";
 import { createUserStatsSchema } from "./user-champion-stats";
+import { updateUserStatsSchema } from "./update-user-stats-schema";
 import { createChampionBuildsSchema, populateChampionBuilds, populateChampionAttributes } from "./champion-builds";
 import { createChampionCountersSchema, populateChampionCounters, populateMultipleChampionCounters } from "./champion-counters";
 
@@ -10,6 +11,7 @@ async function runMigrations() {
     console.log('📋 Creating schemas...');
     await createSchema();
     await createUserStatsSchema();
+    await updateUserStatsSchema(); // Update existing schema if needed
     await createChampionBuildsSchema();
     await createChampionCountersSchema();
     

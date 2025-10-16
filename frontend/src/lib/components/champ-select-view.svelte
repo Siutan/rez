@@ -1,17 +1,20 @@
 <script lang="ts">
   import { DDragon } from "../services/ddragon";
+  import { getPlayerChampionStats, type ChampionStats } from "../services/api";
   import { watch } from "runed";
 
   let { champSelectData = $bindable() }: { champSelectData: any } = $props();
 
   let championImages = $state<Record<number, string>>({});
   let loading = $state(true);
+  let playerStats = $state<Record<string, ChampionStats[]>>({});
 
-  // Reactively load champion images when data changes
+  // Reactively load champion images and player stats when data changes
   watch(
     () => champSelectData,
     () => {
       loadChampionImages();
+      loadPlayerStats();
     },
   );
 
@@ -56,6 +59,37 @@
     }
     championImages = { ...championImages };
     loading = false;
+  }
+
+  async function loadPlayerStats() {
+    const newPlayerStats: Record<string, ChampionStats[]> = {};
+
+    // Load stats for all players in both teams
+    const allPlayers = [...(champSelectData.myTeam || []), ...(champSelectData.theirTeam || [])];
+
+    for (const player of allPlayers) {
+      if (player.gameName && player.tagLine) {
+        const playerKey = `${player.gameName}#${player.tagLine}`;
+        const response = await getPlayerChampionStats(player.gameName, player.tagLine);
+        
+        if (response.success && response.data) {
+          newPlayerStats[playerKey] = response.data;
+        }
+      }
+    }
+
+    playerStats = newPlayerStats;
+  }
+
+  function getChampionStatsForPlayer(gameName: string, tagLine: string, championId: number): ChampionStats | null {
+    if (!gameName || !tagLine) return null;
+    
+    const playerKey = `${gameName}#${tagLine}`;
+    const stats = playerStats[playerKey];
+    
+    if (!stats) return null;
+    
+    return stats.find((stat) => stat.champion_id === championId) || null;
   }
 
   function getPositionIcon(position: string) {
@@ -156,41 +190,51 @@
                 ? player.championId
                 : player.championPickIntent}
             {@const isLocked = player.championId > 0}
+            {@const championStats = displayChampId > 0 ? getChampionStatsForPlayer(player.gameName, player.tagLine, displayChampId) : null}
             <div
-              class="flex justify-between items-center p-1 bg-sky-900/40 rounded-md"
+              class="flex flex-col gap-1 p-1 bg-sky-900/40 rounded-md"
               class:border={player.cellId === localPlayerCellId}
               class:border-sky-500={player.cellId === localPlayerCellId}
             >
-              <div class="flex items-center gap-2">
-                {#if player.assignedPosition}
-                <div
-                  class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                >
-                  {getPositionIcon(player.assignedPosition)}
+              <div class="flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                  {#if player.assignedPosition}
+                  <div
+                    class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
+                  >
+                    {getPositionIcon(player.assignedPosition)}
+                  </div>
+                {/if}
+                {#if displayChampId > 0 && championImages[displayChampId]}
+                  <img
+                    src={championImages[displayChampId]}
+                    alt="Champion"
+                    class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
+                    class:border={!isLocked}
+                    class:border-sky-500={!isLocked}
+                  />
+                {:else}
+                  <div
+                    class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
+                  >
+                    ?
+                  </div>
+                {/if}
                 </div>
-              {/if}
-              {#if displayChampId > 0 && championImages[displayChampId]}
-                <img
-                  src={championImages[displayChampId]}
-                  alt="Champion"
-                  class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                  class:border={!isLocked}
-                  class:border-sky-500={!isLocked}
-                />
-              {:else}
-                <div
-                  class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                >
-                  ?
-                </div>
-              {/if}
+                {#if player.gameName}
+                  <span class="text-xs"
+                    >{player.gameName}#{player.tagLine || ""}</span
+                  >
+                {:else}
+                  <span class="text-xs">Player {player.cellId + 1}</span>
+                {/if}
               </div>
-              {#if player.gameName}
-                <span class="text-xs"
-                  >{player.gameName}#{player.tagLine || ""}</span
-                >
-              {:else}
-                <span class="text-xs">Player {player.cellId + 1}</span>
+              {#if championStats}
+                <div class="flex gap-2 text-[10px] text-slate-300 pl-1">
+                  <span class="text-emerald-400">{championStats.win_rate.toFixed(1)}% WR</span>
+                  <span>{championStats.total_matches}G</span>
+                  <span>{championStats.avg_kda.toFixed(2)} KDA</span>
+                </div>
               {/if}
             </div>
           {/each}
@@ -210,31 +254,45 @@
                   ? player.championId
                   : player.championPickIntent}
               {@const isLocked = player.championId > 0}
+              {@const championStats = displayChampId > 0 ? getChampionStatsForPlayer(player.gameName, player.tagLine, displayChampId) : null}
               <div
-                class="flex justify-between items-center p-1 bg-rose-900/40 rounded-md"
+                class="flex flex-col gap-1 p-1 bg-rose-900/40 rounded-md"
               >
-                <div class="flex items-center gap-2">
-                  {#if player.assignedPosition}
-                    {player.assignedPosition}
-                    {getPositionIcon(player.assignedPosition)}
+                <div class="flex justify-between items-center">
+                  <div class="flex items-center gap-2">
+                    {#if player.assignedPosition}
+                      <div
+                        class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
+                      >
+                        {getPositionIcon(player.assignedPosition)}
+                      </div>
+                    {/if}
+                    {#if displayChampId > 0 && championImages[displayChampId]}
+                      <img
+                        src={championImages[displayChampId]}
+                        alt="Champion"
+                        class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
+                        class:border={!isLocked}
+                        class:border-rose-500={!isLocked}
+                      />
+                    {:else}
+                      <div class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center">?</div>
+                    {/if}
+                  </div>
+                  {#if player.gameName}
+                    <span class="text-xs"
+                      >{player.gameName}#{player.tagLine || ""}</span
+                    >
+                  {:else}
+                    <span class="text-xs">Player {player.cellId + 1}</span>
                   {/if}
                 </div>
-                {#if displayChampId > 0 && championImages[displayChampId]}
-                  <img
-                    src={championImages[displayChampId]}
-                    alt="Champion"
-                    class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                    class:hovering={!isLocked}
-                  />
-                {:else}
-                  <div class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center">?</div>
-                {/if}
-                {#if player.gameName}
-                  <span class="text-xs"
-                    >{player.gameName}</span
-                  >
-                {:else}
-                  <span class="text-xs">Player {player.cellId + 1}</span>
+                {#if championStats}
+                  <div class="flex gap-2 text-[10px] text-slate-300 pl-1">
+                    <span class="text-rose-400">{championStats.win_rate.toFixed(1)}% WR</span>
+                    <span>{championStats.total_matches}G</span>
+                    <span>{championStats.avg_kda.toFixed(2)} KDA</span>
+                  </div>
                 {/if}
               </div>
             {/each}

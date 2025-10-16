@@ -13,6 +13,8 @@ export function GetLobby():Promise<Record<string, any>>;
 
 export function GetMatchHistory():Promise<Record<string, any>>;
 
+export function GetRegionInfo():Promise<Record<string, any>>;
+
 export function GetSummonerProfile():Promise<Record<string, any>>;
 
 export function IsLCUConnected():Promise<boolean>;

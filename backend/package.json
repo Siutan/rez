@@ -8,6 +8,7 @@
     "debug": "bun run debug-db.ts"
   },
   "dependencies": {
+    "@elysiajs/cors": "^1.4.0",
     "@elysiajs/cron": "^1.4.1",
     "@google/genai": "^1.22.0",
     "@libsql/client": "^0.15.15",

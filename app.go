@@ -57,6 +57,7 @@ type App struct {
 	connector  *LCUConnector
 	lcuClient  *http.Client
 	connInfo   *ConnectionInfo
+	regionInfo map[string]interface{}
 }
 
 // NewApp creates a new App application struct
@@ -119,8 +120,20 @@ func (a *App) handleLCUConnection() {
 		case info := <-a.connector.OnConnect:
 			a.connInfo = &info
 			runtime.EventsEmit(a.ctx, "lcu:connected", info)
+
+			// Fetch region info after connection
+			go func() {
+				// Wait a bit for LCU to be fully ready
+				time.Sleep(1 * time.Second)
+				if regionInfo, err := a.fetchRegionLocale(); err == nil {
+					a.regionInfo = regionInfo
+					runtime.EventsEmit(a.ctx, "lcu:region", regionInfo)
+				}
+			}()
+
 		case <-a.connector.OnDisconnect:
 			a.connInfo = nil
+			a.regionInfo = nil
 			runtime.EventsEmit(a.ctx, "lcu:disconnected")
 		case champSelect := <-a.connector.OnChampSelect:
 			runtime.EventsEmit(a.ctx, "lcu:champ-select", champSelect)
@@ -449,4 +462,14 @@ func (a *App) GetLobby() (map[string]interface{}, error) {
 // IsLCUConnected returns whether we're connected to the LCU
 func (a *App) IsLCUConnected() bool {
 	return a.connInfo != nil
+}
+
+// GetRegionInfo returns the cached region and locale info
+func (a *App) GetRegionInfo() map[string]interface{} {
+	return a.regionInfo
+}
+
+// fetchRegionLocale fetches the client's region and locale info from LCU
+func (a *App) fetchRegionLocale() (map[string]interface{}, error) {
+	return a.lcuRequest("GET", "/riotclient/region-locale")
 }

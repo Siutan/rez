@@ -26,6 +26,10 @@ export function GetMatchHistory() {
   return window['go']['main']['App']['GetMatchHistory']();
 }
 
+export function GetRegionInfo() {
+  return window['go']['main']['App']['GetRegionInfo']();
+}
+
 export function GetSummonerProfile() {
   return window['go']['main']['App']['GetSummonerProfile']();
 }

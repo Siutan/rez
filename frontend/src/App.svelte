@@ -1,83 +1,96 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import {
     GetCurrentSummoner,
     GetSummonerProfile,
     IsLCUConnected,
     GetMatchHistory,
+    GetRegionInfo,
   } from "../wailsjs/go/main/App.js";
   import { EventsOn } from "../wailsjs/runtime/runtime.js";
   import { DDragon } from "./lib/services/ddragon";
+  import { storePlayerChampions } from "./lib/services/api";
   import MatchHistoryView from "./lib/components/match-history-view.svelte";
   import ChampSelectView from "./lib/components/champ-select-view.svelte";
   import type { Match } from "./types/lcu/match";
 
-  // App state
+  // -------- STATE MANAGEMENT --------
+  
+  // Connection state
   let lcuConnected = false;
+  let loading = false;
+  let errorMessage = "";
+
+  // Summoner data
   let summonerData = null;
   let profileData = null;
   let matchHistoryData: { games: { games: Match[] } } = null;
-  let errorMessage = "";
-  let loading = false;
+  let regionId = "na1"; // Default region
 
-  // Router state
+  // View state
   let currentView: "match-history" | "champ-select" = "match-history";
   let champSelectData = null;
 
-  // initialize ddragon by calling it
+  // Initialize DDragon service
   DDragon.init();
 
+  // -------- LIFECYCLE & EVENT HANDLING --------
+  
+  let cleanupFunctions: (() => void)[] = [];
+
   onMount(() => {
-    // Listen for LCU connection events
-    EventsOn("lcu:connected", (info) => {
-      console.log("LCU Connected:", info);
-      lcuConnected = true;
-      errorMessage = "";
-      loadUserData();
-    });
-
-    EventsOn("lcu:disconnected", () => {
-      console.log("LCU Disconnected");
-      lcuConnected = false;
-      summonerData = null;
-      profileData = null;
-      matchHistoryData = null;
-      champSelectData = null;
-      currentView = "match-history";
-    });
-
-    EventsOn("lcu:champ-select", (data) => {
-      console.log("Champ Select:", data);
-      
-      // Check if this is a valid session
-      if (data && data.localPlayerCellId >= 0 && data.timer?.phase) {
-        champSelectData = data;
-        currentView = "champ-select";
-      } else {
-        // Invalid or ended session, go back to match history
-        champSelectData = null;
-        currentView = "match-history";
-      }
-    });
-
-    EventsOn("lcu:champ-select-ended", () => {
-      console.log("Champion Select Ended");
-      champSelectData = null;
-      currentView = "match-history";
-    });
-
-    // Check if already connected
-    checkConnection();
+    setupEventListeners();
+    checkInitialConnection();
   });
 
-  async function checkConnection() {
+  onDestroy(() => {
+    cleanupFunctions.forEach((cleanup) => cleanup());
+  });
+
+  function setupEventListeners() {
+    // LCU Connected - Load user data
+    const lcuConnectedCleanup = EventsOn("lcu:connected", async () => {
+      console.log("LCU Connected");
+      lcuConnected = true;
+      errorMessage = "";
+      await loadUserData();
+    });
+
+    // LCU Disconnected - Clear all data
+    const lcuDisconnectedCleanup = EventsOn("lcu:disconnected", () => {
+      console.log("LCU Disconnected");
+      resetAppState();
+    });
+
+    // Champion Select Started/Updated
+    const champSelectCleanup = EventsOn("lcu:champ-select", (data) => {
+      handleChampSelectUpdate(data);
+    });
+
+    // Champion Select Ended
+    const champSelectEndedCleanup = EventsOn("lcu:champ-select-ended", () => {
+      console.log("Champion Select Ended");
+      exitChampSelect();
+    });
+
+    cleanupFunctions.push(
+      lcuConnectedCleanup,
+      lcuDisconnectedCleanup,
+      champSelectCleanup,
+      champSelectEndedCleanup
+    );
+  }
+
+  // -------- DATA LOADING --------
+
+  async function checkInitialConnection() {
     try {
       lcuConnected = await IsLCUConnected();
       if (lcuConnected) {
         await loadUserData();
       }
     } catch (err) {
-      console.error("Error checking connection:", err);
+      console.error("Error checking initial connection:", err);
     }
   }
 
@@ -86,6 +99,14 @@
     errorMessage = "";
 
     try {
+      // Fetch region info first
+      const regionInfo = await GetRegionInfo();
+      if (regionInfo && regionInfo.region) {
+        regionId = regionInfo.region.toLowerCase();
+        console.log("Region detected:", regionId);
+      }
+
+      // Load summoner data in parallel
       const [summoner, profile, matchHistory] = await Promise.all([
         GetCurrentSummoner(),
         GetSummonerProfile(),
@@ -95,6 +116,13 @@
       summonerData = summoner;
       profileData = profile;
       matchHistoryData = matchHistory as { games: { games: Match[] } };
+
+      console.log("User data loaded:", { summoner, region: regionId });
+
+      // Store player champion stats in the background
+      if (summoner.gameName && summoner.tagLine) {
+        storePlayerChampionStats(summoner.gameName, summoner.tagLine);
+      }
     } catch (err) {
       console.error("Error loading user data:", err);
       errorMessage = err.toString();
@@ -102,10 +130,58 @@
       loading = false;
     }
   }
+
+  async function storePlayerChampionStats(gameName: string, tagLine: string) {
+    try {
+      const result = await storePlayerChampions({
+        riotUserName: gameName,
+        riotTagLine: tagLine,
+        regionId: regionId,
+      });
+
+      if (result.success) {
+        console.log("Player stats stored successfully");
+      } else {
+        console.error("Failed to store player stats:", result.error);
+      }
+    } catch (err) {
+      console.error("Error storing player stats:", err);
+    }
+  }
+
+  // -------- STATE MANAGEMENT HELPERS --------
+
+  function resetAppState() {
+    lcuConnected = false;
+    summonerData = null;
+    profileData = null;
+    matchHistoryData = null;
+    champSelectData = null;
+    currentView = "match-history";
+    regionId = "na1";
+    errorMessage = "";
+  }
+
+  function handleChampSelectUpdate(data: any) {
+    // Validate champion select session
+    if (data && data.localPlayerCellId >= 0 && data.timer?.phase) {
+      console.log("Champion Select active:", data.timer.phase);
+      champSelectData = data;
+      currentView = "champ-select";
+    } else {
+      // Invalid session, return to match history
+      exitChampSelect();
+    }
+  }
+
+  function exitChampSelect() {
+    champSelectData = null;
+    currentView = "match-history";
+  }
 </script>
 
 <main>
-  <div class="container bg-slate-950">
+  <div class="h-screen bg-slate-950">
     {#if !lcuConnected}
       <div
         class="w-full p-2 bg-slate-900/40 rounded-md flex justify-center items-center gap-2"
@@ -158,11 +234,6 @@
   main {
     height: 100vh;
     overflow-y: auto;
-  }
-
-  .container {
-    padding: 1.5rem;
-    max-width: 100%;
   }
 
   @keyframes pulse {

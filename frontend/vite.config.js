@@ -11,4 +11,15 @@ export default defineConfig({
   css: {
     devSourcemap: true,
   },
+  server: {
+    watch: {
+      // Ignore wailsjs bindings and other auto-generated files
+      ignored: [
+        '**/wailsjs/**',
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/dist/**',
+      ],
+    },
+  },
 })
