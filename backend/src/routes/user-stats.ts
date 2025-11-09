@@ -36,13 +36,17 @@ export const userStatsRoute = new Elysia({ prefix: "/user-stats" })
   // Get user stats by username and tagline
   .get(
     "/:riotUserName/:riotTagLine",
-    async ({ params }) => {
+    async ({ params, query }) => {
       try {
-        const stats = await getUserStats(params.riotUserName, params.riotTagLine);
+        const result = await getUserStats(params.riotUserName, params.riotTagLine, query.regionId);
 
         return {
           success: true,
-          data: stats,
+          data: result.data,
+          status: result.status,
+          lastUpdatedAt: result.lastUpdatedAt,
+          needsUpdate: result.needsUpdate,
+          priority: result.priority,
         };
       } catch (error) {
         return {
@@ -56,6 +60,9 @@ export const userStatsRoute = new Elysia({ prefix: "/user-stats" })
       params: t.Object({
         riotUserName: t.String(),
         riotTagLine: t.String(),
+      }),
+      query: t.Object({
+        regionId: t.Optional(t.String()),
       }),
     }
   );

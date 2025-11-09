@@ -1,6 +1,7 @@
 import { turso } from '../db/turso';
 import { fetchAndParsePlayerStats } from '../db/data/user-stats';
 import type { ParsedUserStats } from '../db/data/user-stats';
+import { userStatsUpdateQueue, determinePriority } from './update-queue';
 
 /**
  * Upsert user stats for a specific player
@@ -140,9 +141,68 @@ export async function fetchAndStoreUserStats(params: {
 
 /**
  * Get user stats from database by username and tagline
+ * Always returns immediately from DB, queues background update if needed
  */
-export async function getUserStats(riotUserName: string, riotTagLine: string) {
+export async function getUserStats(riotUserName: string, riotTagLine: string, regionId?: string) {
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  
+  // First, check if we have any data for this user
   const result = await turso.execute({
+    sql: `
+      SELECT last_updated_at FROM user_champion_stats
+      WHERE riot_user_name = ? AND riot_tag_line = ?
+      LIMIT 1
+    `,
+    args: [riotUserName, riotTagLine],
+  });
+
+  const hasData = result.rows.length > 0;
+  const lastUpdatedAt = hasData ? result.rows[0]?.last_updated_at as string : null;
+  
+  // Determine data freshness
+  let dataStatus: 'fresh' | 'stale' | 'expired' | 'missing';
+  let needsUpdate = false;
+  let priority: 'immediate' | 'high' | 'low' = 'low';
+
+  if (!hasData) {
+    dataStatus = 'missing';
+    needsUpdate = true;
+    priority = 'immediate';
+  } else if (lastUpdatedAt) {
+    const ageMs = Date.now() - new Date(lastUpdatedAt).getTime();
+    if (ageMs > TWENTY_FOUR_HOURS_MS) {
+      dataStatus = 'expired';
+      needsUpdate = true;
+      priority = 'high';
+    } else if (ageMs > ONE_HOUR_MS) {
+      dataStatus = 'stale';
+      needsUpdate = true;
+      priority = 'low';
+    } else {
+      dataStatus = 'fresh';
+      needsUpdate = false;
+    }
+  } else {
+    dataStatus = 'missing';
+    needsUpdate = true;
+    priority = 'immediate';
+  }
+
+  // Queue background update if needed
+  if (needsUpdate && regionId) {
+    userStatsUpdateQueue.enqueue({
+      riotUserName,
+      riotTagLine,
+      regionId,
+      priority,
+    });
+    
+    console.log(`📝 Queued ${priority} priority update for ${riotUserName}#${riotTagLine} (${dataStatus})`);
+  }
+
+  // Return the data (either existing fresh/stale data or empty array for missing)
+  const finalResult = await turso.execute({
     sql: `
       SELECT * FROM user_champion_stats
       WHERE riot_user_name = ? AND riot_tag_line = ?
@@ -151,6 +211,12 @@ export async function getUserStats(riotUserName: string, riotTagLine: string) {
     args: [riotUserName, riotTagLine],
   });
 
-  return result.rows;
+  return {
+    data: finalResult.rows,
+    status: dataStatus,
+    lastUpdatedAt,
+    needsUpdate,
+    priority,
+  };
 }
 

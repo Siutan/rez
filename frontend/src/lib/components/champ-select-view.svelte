@@ -1,13 +1,14 @@
 <script lang="ts">
   import { DDragon } from "../services/ddragon";
-  import { getPlayerChampionStats, type ChampionStats } from "../services/api";
+  import { getPlayerChampionStats, type ChampionStats, fetchSummonerRanks, type SummonerRankResult } from "../services/api";
   import { watch } from "runed";
 
-  let { champSelectData = $bindable() }: { champSelectData: any } = $props();
+  let { champSelectData = $bindable(), regionId }: { champSelectData: any, regionId: string } = $props();
 
   let championImages = $state<Record<number, string>>({});
   let loading = $state(true);
   let playerStats = $state<Record<string, ChampionStats[]>>({});
+  let playerRanks = $state<Record<string, SummonerRankResult>>(/** @type {any} */ ({}));
 
   // Reactively load champion images and player stats when data changes
   watch(
@@ -15,6 +16,7 @@
     () => {
       loadChampionImages();
       loadPlayerStats();
+      loadPlayerRanks();
     },
   );
 
@@ -24,7 +26,6 @@
 
     // Collect all champion IDs from both teams
     champSelectData.myTeam?.forEach((player) => {
-      console.log({ player });
       if (player.championId > 0)
         championIds.add(Number.parseInt(player.championId));
       if (player.championPickIntent > 0)
@@ -61,22 +62,69 @@
     loading = false;
   }
 
+  async function loadPlayerRanks() {
+    if (!champSelectData) return;
+    const inputs: { riotUserName: string; riotTagLine: string; regionId: string }[] = [];
+
+    const pushPlayer = (p: any) => {
+      if (p?.gameName && p?.tagLine && regionId) {
+        inputs.push({ riotUserName: p.gameName, riotTagLine: p.tagLine, regionId });
+      }
+    };
+
+    champSelectData.myTeam?.forEach(pushPlayer);
+    champSelectData.theirTeam?.forEach(pushPlayer);
+
+    if (inputs.length === 0) return;
+
+    const res = await fetchSummonerRanks(inputs);
+    if (res.success && res.data) {
+      const map: Record<string, SummonerRankResult> = {};
+      for (const entry of res.data) {
+        map[`${entry.riotUserName}#${entry.riotTagLine}`] = entry;
+      }
+      playerRanks = map;
+    }
+  }
+
   async function loadPlayerStats() {
     const newPlayerStats: Record<string, ChampionStats[]> = {};
 
     // Load stats for all players in both teams
     const allPlayers = [...(champSelectData.myTeam || []), ...(champSelectData.theirTeam || [])];
 
-    for (const player of allPlayers) {
-      if (player.gameName && player.tagLine) {
+    // Create array of promises for parallel execution
+    const playerPromises = allPlayers
+      .filter(player => player.gameName && player.tagLine)
+      .map(async (player) => {
         const playerKey = `${player.gameName}#${player.tagLine}`;
-        const response = await getPlayerChampionStats(player.gameName, player.tagLine);
-        
-        if (response.success && response.data) {
-          newPlayerStats[playerKey] = response.data;
+        try {
+          const response = await getPlayerChampionStats(player.gameName, player.tagLine, regionId)
+          
+          if (response.success && response.data) {
+            return { playerKey, data: response.data, status: response.success ? 'success' : 'error' };
+          }
+          return { playerKey, data: [], status: 'missing' };
+        } catch (error) {
+          console.error(`Failed to load stats for ${playerKey}:`, error);
+          return { playerKey, data: [], status: 'error' };
         }
+      });
+
+    // Execute all requests in parallel
+    const results = await Promise.all(playerPromises);
+    
+    // Process results
+    results.forEach(({ playerKey, data, status }) => {
+      newPlayerStats[playerKey] = data;
+      
+      // Log status for debugging
+      if (status === 'stale' || status === 'expired') {
+        console.log(`📊 ${playerKey}: Using ${status} data (background update queued)`);
+      } else if (status === 'missing') {
+        console.log(`📊 ${playerKey}: No data available (background update queued)`);
       }
-    }
+    });
 
     playerStats = newPlayerStats;
   }
@@ -108,6 +156,21 @@
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
+  }
+
+  function getRankText(gameName: string, tagLine: string) {
+    if (!gameName || !tagLine) return "Unranked";
+    const entry = playerRanks[`${gameName}#${tagLine}`];
+    const ranks = entry?.ranks || [];
+    if (ranks.length === 0) return "Unranked";
+    // Prefer solo queue, then flex, else first available
+    const solo = ranks.find((r) => r.queueType === "RANKED_SOLO_5x5");
+    const flex = ranks.find((r) => r.queueType === "RANKED_FLEX_SR");
+    const best = solo || flex || ranks[0];
+    if (!best?.tier) return "Unranked";
+    const division = best.rank ? ` ${best.rank}` : "";
+    const lp = typeof best.lp === "number" ? ` ${best.lp} LP` : "";
+    return `${best.tier}${division}${lp}`;
   }
 
   const myTeam = $derived(champSelectData?.myTeam || []);
@@ -222,9 +285,10 @@
                 {/if}
                 </div>
                 {#if player.gameName}
-                  <span class="text-xs"
-                    >{player.gameName}#{player.tagLine || ""}</span
-                  >
+                  <div class="flex flex-col leading-tight">
+                    <span class="text-xs">{player.gameName}#{player.tagLine || ""}</span>
+                    <span class="text-[10px] text-slate-300">{getRankText(player.gameName, player.tagLine)}</span>
+                  </div>
                 {:else}
                   <span class="text-xs">Player {player.cellId + 1}</span>
                 {/if}
@@ -280,9 +344,10 @@
                     {/if}
                   </div>
                   {#if player.gameName}
-                    <span class="text-xs"
-                      >{player.gameName}#{player.tagLine || ""}</span
-                    >
+                    <div class="flex flex-col leading-tight items-end">
+                      <span class="text-xs">{player.gameName}#{player.tagLine || ""}</span>
+                      <span class="text-[10px] text-slate-300">{getRankText(player.gameName, player.tagLine)}</span>
+                    </div>
                   {:else}
                     <span class="text-xs">Player {player.cellId + 1}</span>
                   {/if}

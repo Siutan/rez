@@ -3,11 +3,13 @@
   import type { Match } from "../../types/lcu/match";
 
   let { matchHistoryData }: { matchHistoryData: { games: { games: Match[] } } } = $props();
+
+  const filteredMatches = $derived(matchHistoryData.games.games.filter(match => match.gameType !== "CUSTOM_GAME"));
 </script>
 
 <div class="p-1">
   <div class="flex flex-col gap-4">
-    {#each matchHistoryData.games.games as match}
+    {#each filteredMatches as match}
       <div class="match-history-item">
         <MatchHistoryItem {match} />
       </div>

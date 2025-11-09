@@ -9,7 +9,7 @@
   } from "../wailsjs/go/main/App.js";
   import { EventsOn } from "../wailsjs/runtime/runtime.js";
   import { DDragon } from "./lib/services/ddragon";
-  import { storePlayerChampions } from "./lib/services/api";
+  import { storePlayerChampions, clearAllRankCache } from "./lib/services/api";
   import MatchHistoryView from "./lib/components/match-history-view.svelte";
   import ChampSelectView from "./lib/components/champ-select-view.svelte";
   import type { Match } from "./types/lcu/match";
@@ -50,7 +50,6 @@
   function setupEventListeners() {
     // LCU Connected - Load user data
     const lcuConnectedCleanup = EventsOn("lcu:connected", async () => {
-      console.log("LCU Connected");
       lcuConnected = true;
       errorMessage = "";
       await loadUserData();
@@ -58,12 +57,12 @@
 
     // LCU Disconnected - Clear all data
     const lcuDisconnectedCleanup = EventsOn("lcu:disconnected", () => {
-      console.log("LCU Disconnected");
       resetAppState();
     });
 
     // Champion Select Started/Updated
     const champSelectCleanup = EventsOn("lcu:champ-select", (data) => {
+      console.log("in champ select");
       handleChampSelectUpdate(data);
     });
 
@@ -103,7 +102,6 @@
       const regionInfo = await GetRegionInfo();
       if (regionInfo && regionInfo.region) {
         regionId = regionInfo.region.toLowerCase();
-        console.log("Region detected:", regionId);
       }
 
       // Load summoner data in parallel
@@ -117,7 +115,6 @@
       profileData = profile;
       matchHistoryData = matchHistory as { games: { games: Match[] } };
 
-      console.log("User data loaded:", { summoner, region: regionId });
 
       // Store player champion stats in the background
       if (summoner.gameName && summoner.tagLine) {
@@ -133,17 +130,12 @@
 
   async function storePlayerChampionStats(gameName: string, tagLine: string) {
     try {
-      const result = await storePlayerChampions({
+      await storePlayerChampions({
         riotUserName: gameName,
         riotTagLine: tagLine,
         regionId: regionId,
       });
 
-      if (result.success) {
-        console.log("Player stats stored successfully");
-      } else {
-        console.error("Failed to store player stats:", result.error);
-      }
     } catch (err) {
       console.error("Error storing player stats:", err);
     }
@@ -157,8 +149,9 @@
     profileData = null;
     matchHistoryData = null;
     champSelectData = null;
+    clearAllRankCache();
     currentView = "match-history";
-    regionId = "na1";
+    regionId = "oc1";
     errorMessage = "";
   }
 
@@ -176,6 +169,7 @@
 
   function exitChampSelect() {
     champSelectData = null;
+    clearAllRankCache();
     currentView = "match-history";
   }
 </script>
@@ -223,7 +217,7 @@
         {#if currentView === "match-history"}
           <MatchHistoryView {matchHistoryData} />
         {:else if currentView === "champ-select" && champSelectData}
-          <ChampSelectView bind:champSelectData={champSelectData} />
+          <ChampSelectView bind:champSelectData={champSelectData} regionId={regionId} />
         {/if}
       </div>
     {/if}
