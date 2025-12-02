@@ -175,11 +175,10 @@
   }
 </script>
 
-<main>
-  <div class="h-screen bg-slate-950">
+<main class="h-screen bg-neutral-950">
     {#if !lcuConnected}
       <div
-        class="w-full p-2 bg-slate-900/40 rounded-md flex justify-center items-center gap-2"
+        class="w-full p-2 bg-neutral-900/40 rounded-md flex justify-center items-center gap-2"
       >
         <div class="w-2 h-2 bg-red-500 rounded-full"></div>
         <span>Waiting for League Client...</span>
@@ -222,7 +221,6 @@
         {/if}
       </div>
     {/if}
-  </div>
 </main>
 
 <style>

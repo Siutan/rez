@@ -5,12 +5,14 @@
   import { pushLiveDraftUpdate, clearLiveDraft } from "./liveProvider";
   import type { DraftState, LcuChampSelectSession } from "./types";
 
-  export let regionId: string;
+  let {
+    regionId,
+  }: {
+    regionId: string;
+  } = $props();
 
   let unsubscribe: () => void;
-  let draft: DraftState | null = null;
-
-  $: $draftState && (draft = $draftState);
+  const draft = $derived($draftState);
 
   /**
    * Wire the shell to the existing Wails champ select events.
@@ -37,7 +39,7 @@
   onDestroy(() => {
     if (unsubscribe) unsubscribe();
   });
-}</script>
+</script>
 
 {#if draft}
   <ChampSelectView {draft} {regionId} />

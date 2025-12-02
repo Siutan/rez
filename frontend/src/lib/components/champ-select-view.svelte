@@ -8,6 +8,8 @@
   } from "../services/api";
   import { watch } from "runed";
   import type { DraftState } from "../draft/types";
+  import { toNumber } from "../utils";
+  import ChampSelectTeam from "./Champ-select-team.svelte";
 
   let {
     draft,
@@ -39,16 +41,16 @@
     // Collect all champion IDs from both teams
     draft?.myTeam?.forEach((player) => {
       if (player.championId > 0)
-        championIds.add(Number.parseInt(player.championId));
+        championIds.add(toNumber(player.championId));
       if (player.championPickIntent > 0)
-        championIds.add(Number.parseInt(player.championPickIntent));
+        championIds.add(toNumber(player.championPickIntent));
     });
 
     draft?.theirTeam?.forEach((player) => {
       if (player.championId > 0)
-        championIds.add(Number.parseInt(player.championId));
+        championIds.add(toNumber(player.championId));
       if (player.championPickIntent > 0)
-        championIds.add(Number.parseInt(player.championPickIntent));
+        championIds.add(toNumber(player.championPickIntent));
     });
 
     draft?.bans?.myTeamBans?.forEach((id) => {
@@ -141,50 +143,6 @@
     playerStats = newPlayerStats;
   }
 
-  function getChampionStatsForPlayer(gameName: string, tagLine: string, championId: number): ChampionStats | null {
-    if (!gameName || !tagLine) return null;
-    
-    const playerKey = `${gameName}#${tagLine}`;
-    const stats = playerStats[playerKey];
-    
-    if (!stats) return null;
-    
-    return stats.find((stat) => stat.champion_id === championId) || null;
-  }
-
-  function getPositionIcon(position: string) {
-    const icons = {
-      top: "Top",
-      jungle: "Jg",
-      middle: "Mid",
-      bottom: "Adc",
-      utility: "Sup",
-    };
-    return icons[position?.toLowerCase()] || "?";
-  }
-
-  function formatTime(milliseconds: number) {
-    const totalSeconds = Math.floor(milliseconds / 1000);
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  }
-
-  function getRankText(gameName: string, tagLine: string) {
-    if (!gameName || !tagLine) return "Unranked";
-    const entry = playerRanks[`${gameName}#${tagLine}`];
-    const ranks = entry?.ranks || [];
-    if (ranks.length === 0) return "Unranked";
-    // Prefer solo queue, then flex, else first available
-    const solo = ranks.find((r) => r.queueType === "RANKED_SOLO_5x5");
-    const flex = ranks.find((r) => r.queueType === "RANKED_FLEX_SR");
-    const best = solo || flex || ranks[0];
-    if (!best?.tier) return "Unranked";
-    const division = best.rank ? ` ${best.rank}` : "";
-    const lp = typeof best.lp === "number" ? ` ${best.lp} LP` : "";
-    return `${best.tier}${division}${lp}`;
-  }
-
   const myTeam = $derived(draft?.myTeam || []);
   const theirTeam = $derived(draft?.theirTeam || []);
   const myBans = $derived(draft?.bans?.myTeamBans || []);
@@ -197,184 +155,34 @@
     <div class="loading">Loading champion data...</div>
   {:else}
     <div class="content">
-      <!-- Bans -->
-      <div class="flex gap-2 justify-between items-center">
-        <div class="flex flex-col gap-2">
-          <h3>Your Bans</h3>
-          <div class="flex flex-wrap gap-2">
-            {#each myBans as banId}
-              {#if banId > 0 && championImages[banId]}
-                <img
-                  src={championImages[banId]}
-                  alt="Banned Champion"
-                  class="w-4 h-4 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                />
-              {:else if banId > 0}
-                <div
-                  class="w-4 h-4 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                >
-                  ?
-                </div>
-              {:else}
-                <div
-                  class="w-4 h-4 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                >
-                  -
-                </div>
-              {/if}
-            {/each}
-          </div>
-        </div>
+      <!-- Bans
+       Going to leave this out for now as i'm not sure if its needed.
+       The bans are already displayed in the draft state on the client.
+      -->
+      <!-- <ChampSelectBans {myBans} {theirBans} {championImages} /> -->
 
-        <div class="flex flex-col gap-2">
-          <h3>Enemy Bans</h3>
-          <div class="flex flex-wrap gap-2">
-            {#each theirBans as banId}
-              {#if banId > 0 && championImages[banId]}
-                <img
-                  src={championImages[banId]}
-                  alt="Banned Champion"
-                  class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                />
-              {:else if banId > 0}
-                <div
-                  class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                >
-                  ?
-                </div>
-              {:else}
-                <div
-                  class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                >
-                  -
-                </div>
-              {/if}
-            {/each}
-          </div>
-        </div>
-      </div>
       <!-- My Team -->
-      <div
-        class="px-2 py-1 pb-2 flex flex-col gap-1 bg-slate-900 rounded-md text-start"
-      >
-        <h3>Your Team</h3>
-        <div class="flex flex-col gap-2">
-          {#each myTeam as player}
-            {@const displayChampId =
-              player.championId > 0
-                ? player.championId
-                : player.championPickIntent}
-            {@const isLocked = player.championId > 0}
-            {@const championStats = displayChampId > 0 ? getChampionStatsForPlayer(player.gameName, player.tagLine, displayChampId) : null}
-            <div
-              class="flex flex-col gap-1 p-1 bg-sky-900/40 rounded-md"
-              class:border={player.cellId === localPlayerCellId}
-              class:border-sky-500={player.cellId === localPlayerCellId}
-            >
-              <div class="flex justify-between items-center">
-                <div class="flex items-center gap-2">
-                  {#if player.assignedPosition}
-                  <div
-                    class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                  >
-                    {getPositionIcon(player.assignedPosition)}
-                  </div>
-                {/if}
-                {#if displayChampId > 0 && championImages[displayChampId]}
-                  <img
-                    src={championImages[displayChampId]}
-                    alt="Champion"
-                    class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                    class:border={!isLocked}
-                    class:border-sky-500={!isLocked}
-                  />
-                {:else}
-                  <div
-                    class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                  >
-                    ?
-                  </div>
-                {/if}
-                </div>
-                {#if player.gameName}
-                  <div class="flex flex-col leading-tight">
-                    <span class="text-xs">{player.gameName}#{player.tagLine || ""}</span>
-                    <span class="text-[10px] text-slate-300">{getRankText(player.gameName, player.tagLine)}</span>
-                  </div>
-                {:else}
-                  <span class="text-xs">Player {player.cellId + 1}</span>
-                {/if}
-              </div>
-              {#if championStats}
-                <div class="flex gap-2 text-[10px] text-slate-300 pl-1">
-                  <span class="text-emerald-400">{championStats.win_rate.toFixed(1)}% WR</span>
-                  <span>{championStats.total_matches}G</span>
-                  <span>{championStats.avg_kda.toFixed(2)} KDA</span>
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </div>
+      <ChampSelectTeam
+        title="Your Team"
+        players={myTeam}
+        {localPlayerCellId}
+        {championImages}
+        isEnemy={false}
+        {playerStats}
+        {playerRanks}
+      />
 
       <!-- Enemy Team -->
       {#if theirTeam.length > 0}
-        <div
-          class="px-2 py-1 pb-2 flex flex-col gap-1 bg-slate-900 rounded-md text-start"
-        >
-          <h3>Enemy Team</h3>
-          <div class="flex flex-col gap-2">
-            {#each theirTeam as player}
-              {@const displayChampId =
-                player.championId > 0
-                  ? player.championId
-                  : player.championPickIntent}
-              {@const isLocked = player.championId > 0}
-              {@const championStats = displayChampId > 0 ? getChampionStatsForPlayer(player.gameName, player.tagLine, displayChampId) : null}
-              <div
-                class="flex flex-col gap-1 p-1 bg-rose-900/40 rounded-md"
-              >
-                <div class="flex justify-between items-center">
-                  <div class="flex items-center gap-2">
-                    {#if player.assignedPosition}
-                      <div
-                        class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                      >
-                        {getPositionIcon(player.assignedPosition)}
-                      </div>
-                    {/if}
-                    {#if displayChampId > 0 && championImages[displayChampId]}
-                      <img
-                        src={championImages[displayChampId]}
-                        alt="Champion"
-                        class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center"
-                        class:border={!isLocked}
-                        class:border-rose-500={!isLocked}
-                      />
-                    {:else}
-                      <div class="w-8 h-8 shrink-0 bg-slate-900/40 rounded-md flex justify-center items-center">?</div>
-                    {/if}
-                  </div>
-                  {#if player.gameName}
-                    <div class="flex flex-col leading-tight items-end">
-                      <span class="text-xs">{player.gameName}#{player.tagLine || ""}</span>
-                      <span class="text-[10px] text-slate-300">{getRankText(player.gameName, player.tagLine)}</span>
-                    </div>
-                  {:else}
-                    <span class="text-xs">Player {player.cellId + 1}</span>
-                  {/if}
-                </div>
-                {#if championStats}
-                  <div class="flex gap-2 text-[10px] text-slate-300 pl-1">
-                    <span class="text-rose-400">{championStats.win_rate.toFixed(1)}% WR</span>
-                    <span>{championStats.total_matches}G</span>
-                    <span>{championStats.avg_kda.toFixed(2)} KDA</span>
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        </div>
+        <ChampSelectTeam
+          title="Enemy Team"
+          players={theirTeam}
+          {localPlayerCellId}
+          {championImages}
+          isEnemy={true}
+          {playerStats}
+          {playerRanks}
+        />
       {/if}
 
       <!-- Analytics Section (Placeholder) -->
