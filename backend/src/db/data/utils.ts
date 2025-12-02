@@ -224,7 +224,7 @@ export function buildUGGStatsUrl(
   patch: string,
   version: string = '1.5.0'
 ): string {
-  return `${UGG_STATS_BASE}/${endpoint}/${patch}/ranked_solo_5x5/${version}`;
+  return `${UGG_STATS_BASE}/${endpoint}/${patch}/ranked_solo_5x5/${version}.json`;
 }
 
 /**
@@ -235,7 +235,7 @@ export function buildUGGOverviewUrl(
   championKey: string,
   version: string = '1.5.0'
 ): string {
-  return `${UGG_STATS_BASE}/overview/${patch}/ranked_solo_5x5/${championKey}/${version}`;
+  return `${UGG_STATS_BASE}/overview/${patch}/ranked_solo_5x5/${championKey}/${version}.json`;
 }
 
 /**
@@ -246,7 +246,7 @@ export function buildUGGMatchupsUrl(
   championId: number,
   version: string = '1.5.0'
 ): string {
-  return `${UGG_STATS_BASE}/matchups/${patch}/ranked_solo_5x5/${championId}/${version}`;
+  return `${UGG_STATS_BASE}/matchups/${patch}/ranked_solo_5x5/${championId}/${version}.json`;
 }
 
 /**
@@ -256,7 +256,7 @@ export function buildUGGPrimaryRolesUrl(
   patch: string,
   version: string = '1.5.0'
 ): string {
-  return `${UGG_STATS_BASE}/primary_roles/${patch}/${version}`;
+  return `${UGG_STATS_BASE}/primary_roles/${patch}/${version}.json`;
 }
 
 /**

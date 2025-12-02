@@ -1,12 +1,14 @@
 import { createSchema, populateChampionStats } from "./champion-stats";
 import { createUserStatsSchema } from "./user-champion-stats";
 import { updateUserStatsSchema } from "./update-user-stats-schema";
-import { createChampionBuildsSchema, populateChampionBuilds, populateChampionAttributes } from "./champion-builds";
+import { createChampionBuildsSchema, populateChampionBuilds } from "./champion-builds";
 import { createChampionCountersSchema, populateChampionCounters, populateMultipleChampionCounters } from "./champion-counters";
+import { cleanupOldPatchData } from "./cleanup-old-patches";
 
 async function runMigrations() {
-    console.log('🔄 Running Migrations Sync')
-    
+  console.log('🔄 Running Migrations Sync');
+
+  try {
     // Create schemas
     console.log('📋 Creating schemas...');
     await createSchema();
@@ -14,16 +16,12 @@ async function runMigrations() {
     await updateUserStatsSchema(); // Update existing schema if needed
     await createChampionBuildsSchema();
     await createChampionCountersSchema();
-    
+
     // Populate data
     console.log('📊 Populating data...');
     await populateChampionStats();
     await populateChampionBuilds();
-    
-    // AI classification (runs only if new builds exist and AI is configured)
-    console.log('🤖 Running AI classification...');
-    await populateChampionAttributes();
-    
+
     // Champion counters (optional - uncomment to populate)
     // Note: This fetches data from u.gg for each champion individually and can be slow.
     // The system auto-detects the current patch and only populates if:
@@ -38,8 +36,15 @@ async function runMigrations() {
     //
     // Example: Force populate for a specific patch (bypasses auto-detection)
     // await populateChampionCounters(134, '15_19');
-    
-    console.log('✅ Migrations Sync Complete')
+
+    // Cleanup old patch data (only runs if everything above succeeded)
+    await cleanupOldPatchData();
+
+    console.log('✅ Migrations Sync Complete');
+  } catch (err) {
+    console.error('❌ Migrations Sync Failed:', err);
+    process.exit(1);
+  }
 }
 
 runMigrations();

@@ -5,6 +5,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "bun run --watch src/index.ts",
     "migrate": "bun run src/db/migrations/run-migrations.ts",
+    "migrate:ai": "bun run src/db/migrations/run-ai-classification.ts",
     "debug": "bun run debug-db.ts"
   },
   "dependencies": {

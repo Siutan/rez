@@ -10,6 +10,39 @@ import {
 const STALE_THRESHOLD_MS = TIME_CONSTANTS.ONE_DAY;
 
 /**
+ * Ensure legacy tables have the expected columns
+ * (needed for existing DBs created before patch support was added)
+ */
+async function ensurePatchColumns() {
+  try {
+    // champion_stats.patch
+    const statsInfo = await turso.execute(`PRAGMA table_info(champion_stats)`);
+    const statsColumns = statsInfo.rows.map((row: any) => row.name as string);
+    if (!statsColumns.includes('patch')) {
+      await turso.execute(`
+        ALTER TABLE champion_stats
+        ADD COLUMN patch TEXT NOT NULL DEFAULT 'unknown'
+      `);
+      console.log('✅ Added patch column to champion_stats');
+    }
+
+    // worst_matchups.patch
+    const matchupsInfo = await turso.execute(`PRAGMA table_info(worst_matchups)`);
+    const matchupColumns = matchupsInfo.rows.map((row: any) => row.name as string);
+    if (!matchupColumns.includes('patch')) {
+      await turso.execute(`
+        ALTER TABLE worst_matchups
+        ADD COLUMN patch TEXT NOT NULL DEFAULT 'unknown'
+      `);
+      console.log('✅ Added patch column to worst_matchups');
+    }
+  } catch (err) {
+    console.error('⚠️  Failed to ensure patch columns on legacy tables:', err);
+    // Do not rethrow here; table creation below will still run for fresh DBs
+  }
+}
+
+/**
  * Get the current patch stored in the database
  */
 async function getCurrentDbPatch(): Promise<string | null> {
@@ -34,6 +67,9 @@ async function getCurrentDbPatch(): Promise<string | null> {
  * Create database schema (runs synchronously before server starts)
  */
 export async function createSchema() {
+  // First, try to upgrade any existing legacy schemas
+  await ensurePatchColumns();
+
   await turso.execute(`
     CREATE TABLE IF NOT EXISTS champion_stats (
       champion_id       TEXT    NOT NULL,
