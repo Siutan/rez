@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:draft-preview": "vite --open /draft-preview.html",
     "build": "vite build",
     "preview": "vite preview"
   },

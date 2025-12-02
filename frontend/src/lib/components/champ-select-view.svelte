@@ -1,9 +1,21 @@
 <script lang="ts">
   import { DDragon } from "../services/ddragon";
-  import { getPlayerChampionStats, type ChampionStats, fetchSummonerRanks, type SummonerRankResult } from "../services/api";
+  import {
+    getPlayerChampionStats,
+    type ChampionStats,
+    fetchSummonerRanks,
+    type SummonerRankResult,
+  } from "../services/api";
   import { watch } from "runed";
+  import type { DraftState } from "../draft/types";
 
-  let { champSelectData = $bindable(), regionId }: { champSelectData: any, regionId: string } = $props();
+  let {
+    draft,
+    regionId,
+  }: {
+    draft: DraftState | null;
+    regionId: string;
+  } = $props();
 
   let championImages = $state<Record<number, string>>({});
   let loading = $state(true);
@@ -12,7 +24,7 @@
 
   // Reactively load champion images and player stats when data changes
   watch(
-    () => champSelectData,
+    () => draft,
     () => {
       loadChampionImages();
       loadPlayerStats();
@@ -25,25 +37,25 @@
     const championIds = new Set<number>();
 
     // Collect all champion IDs from both teams
-    champSelectData.myTeam?.forEach((player) => {
+    draft?.myTeam?.forEach((player) => {
       if (player.championId > 0)
         championIds.add(Number.parseInt(player.championId));
       if (player.championPickIntent > 0)
         championIds.add(Number.parseInt(player.championPickIntent));
     });
 
-    champSelectData.theirTeam?.forEach((player) => {
+    draft?.theirTeam?.forEach((player) => {
       if (player.championId > 0)
         championIds.add(Number.parseInt(player.championId));
       if (player.championPickIntent > 0)
         championIds.add(Number.parseInt(player.championPickIntent));
     });
 
-    champSelectData.bans?.myTeamBans?.forEach((id) => {
+    draft?.bans?.myTeamBans?.forEach((id) => {
       if (id > 0) championIds.add(id);
     });
 
-    champSelectData.bans?.theirTeamBans?.forEach((id) => {
+    draft?.bans?.theirTeamBans?.forEach((id) => {
       if (id > 0) championIds.add(id);
     });
 
@@ -63,7 +75,7 @@
   }
 
   async function loadPlayerRanks() {
-    if (!champSelectData) return;
+    if (!draft) return;
     const inputs: { riotUserName: string; riotTagLine: string; regionId: string }[] = [];
 
     const pushPlayer = (p: any) => {
@@ -72,8 +84,8 @@
       }
     };
 
-    champSelectData.myTeam?.forEach(pushPlayer);
-    champSelectData.theirTeam?.forEach(pushPlayer);
+    draft.myTeam?.forEach(pushPlayer);
+    draft.theirTeam?.forEach(pushPlayer);
 
     if (inputs.length === 0) return;
 
@@ -91,7 +103,7 @@
     const newPlayerStats: Record<string, ChampionStats[]> = {};
 
     // Load stats for all players in both teams
-    const allPlayers = [...(champSelectData.myTeam || []), ...(champSelectData.theirTeam || [])];
+    const allPlayers = [...(draft?.myTeam || []), ...(draft?.theirTeam || [])];
 
     // Create array of promises for parallel execution
     const playerPromises = allPlayers
@@ -173,11 +185,11 @@
     return `${best.tier}${division}${lp}`;
   }
 
-  const myTeam = $derived(champSelectData?.myTeam || []);
-  const theirTeam = $derived(champSelectData?.theirTeam || []);
-  const myBans = $derived(champSelectData?.bans?.myTeamBans || []);
-  const theirBans = $derived(champSelectData?.bans?.theirTeamBans || []);
-  const localPlayerCellId = $derived(champSelectData?.localPlayerCellId || -1);
+  const myTeam = $derived(draft?.myTeam || []);
+  const theirTeam = $derived(draft?.theirTeam || []);
+  const myBans = $derived(draft?.bans?.myTeamBans || []);
+  const theirBans = $derived(draft?.bans?.theirTeamBans || []);
+  const localPlayerCellId = $derived(draft?.localPlayerCellId || -1);
 </script>
 
 <div class="champ-select-container">

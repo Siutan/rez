@@ -11,8 +11,9 @@
   import { DDragon } from "./lib/services/ddragon";
   import { storePlayerChampions, clearAllRankCache } from "./lib/services/api";
   import MatchHistoryView from "./lib/components/match-history-view.svelte";
-  import ChampSelectView from "./lib/components/champ-select-view.svelte";
+  import DraftShell from "./lib/draft/DraftShell.svelte";
   import type { Match } from "./types/lcu/match";
+  import type { LcuChampSelectSession } from "./lib/draft/types";
 
   // -------- STATE MANAGEMENT --------
   
@@ -29,7 +30,7 @@
 
   // View state
   let currentView: "match-history" | "champ-select" = "match-history";
-  let champSelectData = null;
+  let champSelectData: LcuChampSelectSession | null = null;
 
   // Initialize DDragon service
   DDragon.init();
@@ -155,7 +156,7 @@
     errorMessage = "";
   }
 
-  function handleChampSelectUpdate(data: any) {
+  function handleChampSelectUpdate(data: LcuChampSelectSession) {
     // Validate champion select session
     if (data && data.localPlayerCellId >= 0 && data.timer?.phase) {
       console.log("Champion Select active:", data.timer.phase);
@@ -217,7 +218,7 @@
         {#if currentView === "match-history"}
           <MatchHistoryView {matchHistoryData} />
         {:else if currentView === "champ-select" && champSelectData}
-          <ChampSelectView bind:champSelectData={champSelectData} regionId={regionId} />
+          <DraftShell {regionId} />
         {/if}
       </div>
     {/if}

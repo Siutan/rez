@@ -1,0 +1,79 @@
+{
+  "actions": [],
+  "bans": {
+    "myTeamBans": [119, 145, 235, -1, -1],
+    "theirTeamBans": [92, 84, 876, 60, -1],
+    "numBans": 10
+  },
+  "myTeam": [
+    {
+      "cellId": 5,
+      "assignedPosition": "top",
+      "championId": 122,
+      "championPickIntent": 122,
+      "summonerId": 10,
+      "gameName": "RedTop",
+      "tagLine": "NA1",
+      "puuid": "puuid-red-top",
+      "spell1Id": 12,
+      "spell2Id": 4,
+      "selectedSkinId": 0,
+      "team": 200,
+      "wardSkinId": 1,
+      "nameVisibilityType": "VISIBLE"
+    },
+    {
+      "cellId": 6,
+      "assignedPosition": "jungle",
+      "championId": 0,
+      "championPickIntent": 64,
+      "summonerId": 11,
+      "gameName": "RedJg",
+      "tagLine": "NA1",
+      "puuid": "puuid-red-jg",
+      "spell1Id": 11,
+      "spell2Id": 4,
+      "selectedSkinId": 0,
+      "team": 200,
+      "wardSkinId": 1,
+      "nameVisibilityType": "VISIBLE"
+    }
+  ],
+  "theirTeam": [
+    {
+      "cellId": 0,
+      "assignedPosition": "top",
+      "championId": 24,
+      "championPickIntent": 24,
+      "summonerId": 20,
+      "gameName": "BlueTop",
+      "tagLine": "NA1",
+      "puuid": "puuid-blue-top",
+      "spell1Id": 12,
+      "spell2Id": 4,
+      "selectedSkinId": 0,
+      "team": 100,
+      "wardSkinId": 1,
+      "nameVisibilityType": "VISIBLE"
+    }
+  ],
+  "localPlayerCellId": 5,
+  "timer": {
+    "phase": "CHAMP_SELECT",
+    "adjustedTimeLeftInPhase": 45000,
+    "internalNowInEpochMs": 0,
+    "totalTimeInPhase": 60000,
+    "isInfinite": false
+  },
+  "gameId": 9876543210,
+  "queueId": 420,
+  "isCustomGame": false,
+  "isSpectating": false,
+  "counter": 2,
+  "allowSkinSelection": true,
+  "allowRerolling": false,
+  "benchEnabled": false,
+  "rerollsRemaining": 0
+}
+
+

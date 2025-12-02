@@ -1,0 +1,127 @@
+{
+  "actions": [],
+  "bans": {
+    "myTeamBans": [266, 103, 777, 157, -1],
+    "theirTeamBans": [81, 145, 119, -1, -1],
+    "numBans": 10
+  },
+  "myTeam": [
+    {
+      "cellId": 0,
+      "assignedPosition": "top",
+      "championId": 0,
+      "championPickIntent": 24,
+      "summonerId": 1,
+      "gameName": "ToplaneKing",
+      "tagLine": "NA1",
+      "puuid": "puuid-top",
+      "spell1Id": 4,
+      "spell2Id": 12,
+      "selectedSkinId": 0,
+      "team": 100,
+      "wardSkinId": 1,
+      "nameVisibilityType": "VISIBLE"
+    },
+    {
+      "cellId": 1,
+      "assignedPosition": "jungle",
+      "championId": 0,
+      "championPickIntent": 64,
+      "summonerId": 2,
+      "gameName": "JungleDiff",
+      "tagLine": "NA1",
+      "puuid": "puuid-jungle",
+      "spell1Id": 11,
+      "spell2Id": 4,
+      "selectedSkinId": 0,
+      "team": 100,
+      "wardSkinId": 1,
+      "nameVisibilityType": "VISIBLE"
+    },
+    {
+      "cellId": 2,
+      "assignedPosition": "middle",
+      "championId": 0,
+      "championPickIntent": 238,
+      "summonerId": 3,
+      "gameName": "MidOrFeed",
+      "tagLine": "NA1",
+      "puuid": "puuid-mid",
+      "spell1Id": 4,
+      "spell2Id": 14,
+      "selectedSkinId": 0,
+      "team": 100,
+      "wardSkinId": 1,
+      "nameVisibilityType": "VISIBLE"
+    },
+    {
+      "cellId": 3,
+      "assignedPosition": "bottom",
+      "championId": 0,
+      "championPickIntent": 51,
+      "summonerId": 4,
+      "gameName": "CritMachine",
+      "tagLine": "NA1",
+      "puuid": "puuid-bot",
+      "spell1Id": 7,
+      "spell2Id": 4,
+      "selectedSkinId": 0,
+      "team": 100,
+      "wardSkinId": 1,
+      "nameVisibilityType": "VISIBLE"
+    },
+    {
+      "cellId": 4,
+      "assignedPosition": "utility",
+      "championId": 0,
+      "championPickIntent": 89,
+      "summonerId": 5,
+      "gameName": "RoamSupport",
+      "tagLine": "NA1",
+      "puuid": "puuid-sup",
+      "spell1Id": 3,
+      "spell2Id": 4,
+      "selectedSkinId": 0,
+      "team": 100,
+      "wardSkinId": 1,
+      "nameVisibilityType": "VISIBLE"
+    }
+  ],
+  "theirTeam": [
+    {
+      "cellId": 5,
+      "assignedPosition": "top",
+      "championId": 0,
+      "championPickIntent": 122,
+      "summonerId": 6,
+      "gameName": "EnemyTop",
+      "tagLine": "NA1",
+      "puuid": "puuid-enemy-top",
+      "spell1Id": 12,
+      "spell2Id": 4,
+      "selectedSkinId": 0,
+      "team": 200,
+      "wardSkinId": 1,
+      "nameVisibilityType": "VISIBLE"
+    }
+  ],
+  "localPlayerCellId": 2,
+  "timer": {
+    "phase": "BAN_SELECT",
+    "adjustedTimeLeftInPhase": 28000,
+    "internalNowInEpochMs": 0,
+    "totalTimeInPhase": 30000,
+    "isInfinite": false
+  },
+  "gameId": 1234567890,
+  "queueId": 420,
+  "isCustomGame": false,
+  "isSpectating": false,
+  "counter": 1,
+  "allowSkinSelection": true,
+  "allowRerolling": false,
+  "benchEnabled": false,
+  "rerollsRemaining": 0
+}
+
+
