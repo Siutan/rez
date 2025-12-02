@@ -265,6 +265,9 @@ export async function populateChampionStats() {
       
       console.log(`  📊 Inserting ${matchupBatch.length} matchup records...`);
       await turso.batch(matchupBatch, 'write');
+
+      // Commit transaction if everything succeeded
+      await turso.execute('COMMIT');
     
       
       const elapsed = formatDuration(Date.now() - startTime);
