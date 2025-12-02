@@ -1,21 +1,21 @@
 import type { ChampionStats, SummonerRankResult } from "./services/api";
 
-import topLaneIcon from "../assets/images/lane-icons/top.png";
-import jungleLaneIcon from "../assets/images/lane-icons/jungle.png";
-import middleLaneIcon from "../assets/images/lane-icons/middle.png";
-import bottomLaneIcon from "../assets/images/lane-icons/bot.png";
-import supportLaneIcon from "../assets/images/lane-icons/support.png";
+import topLaneIcon from "./images/lane-icons/top.png";
+import jungleLaneIcon from "./images/lane-icons/jungle.png";
+import middleLaneIcon from "./images/lane-icons/middle.png";
+import bottomLaneIcon from "./images/lane-icons/bot.png";
+import supportLaneIcon from "./images/lane-icons/support.png";
 
-import ironRankIcon from "../assets/images/rank-icons/iron-rank.png";
-import bronzeRankIcon from "../assets/images/rank-icons/bronze-rank.png";
-import silverRankIcon from "../assets/images/rank-icons/silver-rank.png";
-import goldRankIcon from "../assets/images/rank-icons/gold-rank.png";
-import platinumRankIcon from "../assets/images/rank-icons/platinum-rank.png";
-import emeraldRankIcon from "../assets/images/rank-icons/emerald-rank.png";
-import diamondRankIcon from "../assets/images/rank-icons/diamond-rank.png";
-import masterRankIcon from "../assets/images/rank-icons/master-rank.png";
-import grandmasterRankIcon from "../assets/images/rank-icons/grandmaster-rank.png";
-import challengerRankIcon from "../assets/images/rank-icons/challenger-rank.png";
+import ironRankIcon from "./images/rank-icons/iron-rank.png";
+import bronzeRankIcon from "./images/rank-icons/bronze-rank.png";
+import silverRankIcon from "./images/rank-icons/silver-rank.png";
+import goldRankIcon from "./images/rank-icons/gold-rank.png";
+import platinumRankIcon from "./images/rank-icons/platinum-rank.png";
+import emeraldRankIcon from "./images/rank-icons/emerald-rank.png";
+import diamondRankIcon from "./images/rank-icons/diamond-rank.png";
+import masterRankIcon from "./images/rank-icons/master-rank.png";
+import grandmasterRankIcon from "./images/rank-icons/grandmaster-rank.png";
+import challengerRankIcon from "./images/rank-icons/challenger-rank.png";
 
 const laneIconMap: Record<string, string> = {
   top: topLaneIcon,
