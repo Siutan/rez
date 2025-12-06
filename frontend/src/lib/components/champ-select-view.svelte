@@ -14,9 +14,13 @@
   let {
     draft,
     regionId,
+    // When true (e.g. in DraftPreview), do not hit the real stats endpoint.
+    // This prevents localhost calls when viewing mock draft scenarios.
+    useMockStats = false,
   }: {
     draft: DraftState | null;
     regionId: string;
+    useMockStats?: boolean;
   } = $props();
 
   let championImages = $state<Record<number, string>>({});
@@ -102,6 +106,12 @@
   }
 
   async function loadPlayerStats() {
+    // In preview/mock mode, skip calling the real stats API entirely.
+    if (useMockStats) {
+      playerStats = {};
+      return;
+    }
+
     const newPlayerStats: Record<string, ChampionStats[]> = {};
 
     // Load stats for all players in both teams

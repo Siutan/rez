@@ -17,9 +17,9 @@
 </script>
 
 <div
-  class="min-h-screen bg-neutral-950 flex items-start justify-center py-4 text-neutral-100"
+  class="min-h-screen bg-black flex items-start justify-center text-neutral-100"
 >
-  <div class="w-full p-4 space-y-4 bg-neutral-950 flex flex-col items-center">
+  <div class="w-full p-4 space-y-4 flex flex-col items-center">
     <header class="w-full flex items-center justify-between gap-4">
       <h1 class="text-lg font-semibold">Champ Select Preview</h1>
 
@@ -38,7 +38,7 @@
 
     {#if selectedDraft}
       <section
-        class="w-[400px] border border-neutral-800 rounded-lg bg-neutral-900/60 p-2"
+        class="w-[400px] border border-neutral-800 rounded-lg bg-neutral-950 p-2"
       >
         <ChampSelectView draft={selectedDraft} regionId="na1" />
       </section>

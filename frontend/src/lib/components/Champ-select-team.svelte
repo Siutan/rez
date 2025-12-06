@@ -28,7 +28,7 @@
 </script>
 
 <div
-  class="px-2 py-1 pb-2 flex flex-col gap-1 bg-neutral-900 rounded-md text-start"
+  class="px-2 py-1 pb-2 flex flex-col gap-1  rounded-md text-start"
 >
   <h3>{title}</h3>
   <div class="flex flex-col gap-2">

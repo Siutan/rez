@@ -58,9 +58,6 @@ class UserStatsWorker {
     this.pollInterval = setInterval(() => {
       this.processJobs();
     }, this.config.pollIntervalMs);
-
-    // Process any existing jobs immediately
-    this.processJobs();
   }
 
   /**
@@ -92,7 +89,7 @@ class UserStatsWorker {
     if (!this.isRunning) return;
 
     const queueStats = userStatsUpdateQueue.getStats();
-    
+
     // Log queue status periodically
     if (this.config.enableLogging && queueStats.totalJobs > 0) {
       console.log(`📊 Queue status: ${queueStats.totalJobs} jobs (${queueStats.immediateJobs} immediate, ${queueStats.highPriorityJobs} high, ${queueStats.lowPriorityJobs} low, ${queueStats.processingJobs} processing)`);
@@ -120,7 +117,7 @@ class UserStatsWorker {
    */
   private async processJob(job: UserStatsUpdateJob): Promise<void> {
     const startTime = Date.now();
-    
+
     try {
       if (this.config.enableLogging) {
         console.log(`🔄 Processing job: ${job.riotUserName}#${job.riotTagLine} (${job.priority} priority, attempt ${job.attempts + 1})`);
@@ -146,7 +143,7 @@ class UserStatsWorker {
     } catch (error) {
       const elapsed = Date.now() - startTime;
       console.error(`❌ Job failed: ${job.riotUserName}#${job.riotTagLine} after ${elapsed}ms:`, error);
-      
+
       // Mark job as failed (will retry if attempts remain)
       userStatsUpdateQueue.fail(job.id, error as Error);
       this.failedJobs++;
@@ -181,7 +178,7 @@ class UserStatsWorker {
     if (!this.isRunning) return;
 
     console.log('🔄 Flushing remaining jobs before shutdown...');
-    
+
     while (userStatsUpdateQueue.hasJobs()) {
       await this.processJobs();
       // Small delay to prevent busy waiting
