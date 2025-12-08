@@ -11,6 +11,7 @@ export const userStatsRoute = new Elysia({ prefix: "/user-stats" })
           riotUserName: body.riotUserName,
           riotTagLine: body.riotTagLine,
           regionId: body.regionId,
+          isCurrentUser: body.isCurrentUser ?? false,
         });
 
         return {
@@ -30,6 +31,7 @@ export const userStatsRoute = new Elysia({ prefix: "/user-stats" })
         riotUserName: t.String(),
         riotTagLine: t.String(),
         regionId: t.String(),
+        isCurrentUser: t.Optional(t.Boolean()),
       }),
     }
   )
@@ -38,7 +40,12 @@ export const userStatsRoute = new Elysia({ prefix: "/user-stats" })
     "/:riotUserName/:riotTagLine",
     async ({ params, query }) => {
       try {
-        const result = await getUserStats(params.riotUserName, params.riotTagLine, query.regionId);
+        const result = await getUserStats(
+          params.riotUserName,
+          params.riotTagLine,
+          query.regionId,
+          query.isCurrentUser ?? false
+        );
 
         return {
           success: true,
@@ -63,6 +70,7 @@ export const userStatsRoute = new Elysia({ prefix: "/user-stats" })
       }),
       query: t.Object({
         regionId: t.Optional(t.String()),
+        isCurrentUser: t.Optional(t.Boolean()),
       }),
     }
   );

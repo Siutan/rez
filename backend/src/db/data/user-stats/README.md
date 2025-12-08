@@ -6,6 +6,8 @@ This module provides functionality to fetch, parse, and store player statistics 
 
 The user stats system aggregates champion performance data across multiple queue types (Normal Draft, Ranked Solo, Ranked Flex) and stores it in a database indexed by `puuid` and `champion_id`.
 
+Before fetching stats, we call the U.GG `UpdatePlayerProfile` mutation to refresh data. A cooldown prevents updates more often than every 10 minutes; non-current users refresh at most every 45 minutes, while current-user (draft-phase) requests refresh every draft once the 10-minute guard has passed. Update timestamps are persisted in `user_profile_updates`.
+
 ## Files
 
 - **`types.ts`**: TypeScript type definitions for API responses and parsed data

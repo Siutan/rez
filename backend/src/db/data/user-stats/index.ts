@@ -2,9 +2,11 @@
 
 import type { UGGPlayerStatsResponse, ParsedUserStats } from './types';
 import { parsePlayerStats } from './parser';
+import { updatePlayerProfile } from './update-profile';
 
 export * from './types';
 export * from './parser';
+export * from './update-profile';
 
 const UGG_API_URL = 'https://u.gg/api';
 
@@ -115,5 +117,16 @@ export async function fetchAndParsePlayerStats(
 ): Promise<ParsedUserStats> {
   const response = await fetchPlayerStats(params);
   return parsePlayerStats(response);
+}
+
+/**
+ * Trigger a profile refresh on U.GG
+ */
+export async function refreshPlayerProfile(params: {
+  riotUserName: string;
+  riotTagLine: string;
+  regionId: string;
+}) {
+  return updatePlayerProfile(params);
 }
 

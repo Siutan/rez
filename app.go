@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
 
+	"github.com/gorilla/websocket"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -41,6 +43,7 @@ const (
 )
 
 const GWL_EXSTYLE = ^uintptr(19) // -20 in two's complement
+const overlayWidth = 400
 
 type RECT struct {
 	Left   int32
@@ -51,17 +54,21 @@ type RECT struct {
 
 // App struct
 type App struct {
-	ctx        context.Context
-	monitoring bool
-	stopChan   chan bool
-	connector  *LCUConnector
-	lcuClient  *http.Client
-	connInfo   *ConnectionInfo
-	regionInfo map[string]interface{}
+	ctx         context.Context
+	monitoring  bool
+	stopChan    chan bool
+	connector   *LCUConnector
+	lcuClient   *http.Client
+	connInfo    *ConnectionInfo
+	regionInfo  map[string]interface{}
+	mockEnabled bool
+	mockWS      string
+	mockStop    chan struct{}
+	mockConn    *websocket.Conn
 }
 
 // NewApp creates a new App application struct
-func NewApp() *App {
+func NewApp(mockEnabled bool, mockWS string) *App {
 	// Create HTTP client that ignores SSL verification (LCU uses self-signed cert)
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -71,8 +78,11 @@ func NewApp() *App {
 	}
 
 	return &App{
-		stopChan:  make(chan bool),
-		lcuClient: httpClient,
+		stopChan:    make(chan bool),
+		mockStop:    make(chan struct{}),
+		lcuClient:   httpClient,
+		mockEnabled: mockEnabled,
+		mockWS:      mockWS,
 	}
 }
 
@@ -104,13 +114,23 @@ func (a *App) startup(ctx context.Context) {
 		}
 	}()
 
-	// Initialize LCU Connector
-	a.connector = New("")
-	go a.handleLCUConnection()
-	a.connector.Start()
+	if a.mockEnabled {
+		// Mock mode: connect to mock champ-select websocket instead of LCU
+		go a.startMockChampSelect()
+	} else {
+		// Initialize LCU Connector
+		a.connector = New("")
+		go a.handleLCUConnection()
+		a.connector.Start()
 
-	// Start monitoring automatically on startup
-	go a.StartMonitoring()
+		// Start monitoring automatically on startup
+		go a.StartMonitoring()
+	}
+
+	// Still monitor window position in mock mode
+	if a.mockEnabled {
+		go a.StartMonitoring()
+	}
 }
 
 // handleLCUConnection handles LCU connect/disconnect events
@@ -136,7 +156,12 @@ func (a *App) handleLCUConnection() {
 			a.regionInfo = nil
 			runtime.EventsEmit(a.ctx, "lcu:disconnected")
 		case champSelect := <-a.connector.OnChampSelect:
-			runtime.EventsEmit(a.ctx, "lcu:champ-select", champSelect)
+			if session, ended := a.extractChampSelect(champSelect); session != nil {
+				runtime.EventsEmit(a.ctx, "lcu:champ-select", session)
+				if ended {
+					runtime.EventsEmit(a.ctx, "lcu:champ-select-ended")
+				}
+			}
 		case <-a.connector.OnChampSelectEnded:
 			runtime.EventsEmit(a.ctx, "lcu:champ-select-ended")
 		}
@@ -233,7 +258,7 @@ func (a *App) PositionWindow() string {
 	}
 
 	// Calculate position (300px to the left of LoL window)
-	width := 300
+	width := overlayWidth
 	height := int(rect.Bottom - rect.Top)
 	x := int(rect.Left) - width
 	y := int(rect.Top)
@@ -322,7 +347,7 @@ func (a *App) StartMonitoring() string {
 					lastRect.Bottom != rect.Bottom
 
 				if positionChanged {
-					width := 400
+					width := overlayWidth
 					height := int(rect.Bottom - rect.Top)
 
 					// Calculate position to the left of LoL window
@@ -370,6 +395,10 @@ func (a *App) StopMonitoring() string {
 
 // lcuRequest makes an HTTP request to the LCU API
 func (a *App) lcuRequest(method, endpoint string) (map[string]interface{}, error) {
+	if a.mockEnabled {
+		return a.mockLCUResponse(endpoint)
+	}
+
 	if a.connInfo == nil {
 		return nil, fmt.Errorf("not connected to LCU")
 	}
@@ -461,6 +490,10 @@ func (a *App) GetLobby() (map[string]interface{}, error) {
 
 // IsLCUConnected returns whether we're connected to the LCU
 func (a *App) IsLCUConnected() bool {
+	// if in mock mode, always return true
+	if a.mockEnabled {
+		return true
+	}
 	return a.connInfo != nil
 }
 
@@ -472,4 +505,141 @@ func (a *App) GetRegionInfo() map[string]interface{} {
 // fetchRegionLocale fetches the client's region and locale info from LCU
 func (a *App) fetchRegionLocale() (map[string]interface{}, error) {
 	return a.lcuRequest("GET", "/riotclient/region-locale")
+}
+
+// startMockChampSelect connects to the mock websocket and forwards events to the frontend.
+func (a *App) startMockChampSelect() {
+	conn, _, err := websocket.DefaultDialer.Dial(a.mockWS, nil)
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "lcu:disconnected")
+		return
+	}
+
+	a.mockConn = conn
+	a.regionInfo = map[string]interface{}{
+		"region": "OC1",
+		"locale": "en_AU",
+		"mock":   true,
+	}
+	runtime.EventsEmit(a.ctx, "lcu:connected", map[string]interface{}{
+		"mode": "mock",
+		"url":  a.mockWS,
+	})
+	runtime.EventsEmit(a.ctx, "lcu:region", a.regionInfo)
+
+	go func() {
+		defer func() {
+			conn.Close()
+			runtime.EventsEmit(a.ctx, "lcu:disconnected")
+		}()
+
+		for {
+			select {
+			case <-a.mockStop:
+				return
+			default:
+			}
+
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+
+			var payload []interface{}
+			if err := json.Unmarshal(data, &payload); err != nil {
+				continue
+			}
+
+			if session, ended := a.extractChampSelect(payload); session != nil {
+				runtime.EventsEmit(a.ctx, "lcu:champ-select", session)
+				if ended {
+					runtime.EventsEmit(a.ctx, "lcu:champ-select-ended")
+				}
+			}
+		}
+	}()
+}
+
+// extractChampSelect normalizes a champ-select websocket payload and returns the session body plus an "ended" flag.
+// Expected shapes:
+// - []any{..., "...event name...", map{"eventType": "...", "data": {...}}}
+// - map{"eventType": "...", "data": {...}} (fallback)
+func (a *App) extractChampSelect(raw interface{}) (map[string]interface{}, bool) {
+	var event map[string]interface{}
+	ended := false
+
+	switch v := raw.(type) {
+	case []interface{}:
+		if len(v) >= 3 {
+			if m, ok := v[2].(map[string]interface{}); ok {
+				event = m
+			}
+		}
+	case map[string]interface{}:
+		event = v
+	default:
+		return nil, false
+	}
+
+	if event == nil {
+		return nil, false
+	}
+
+	if et, ok := event["eventType"].(string); ok && strings.EqualFold(et, "Delete") {
+		ended = true
+	}
+
+	// Prefer the "data" field if present; fallback to whole event if not.
+	if data, ok := event["data"].(map[string]interface{}); ok {
+		return data, ended
+	}
+
+	return event, ended
+}
+
+// mockLCUResponse returns lightweight placeholder responses for mock mode to keep
+// frontend flows alive without hitting the real LCU HTTP endpoints.
+func (a *App) mockLCUResponse(endpoint string) (map[string]interface{}, error) {
+	switch {
+	case strings.HasPrefix(endpoint, "/riotclient/region-locale"):
+		return map[string]interface{}{
+			"region": "OC1",
+			"locale": "en_AU",
+			"mock":   true,
+		}, nil
+	case strings.HasPrefix(endpoint, "/lol-summoner/v1/current-summoner"):
+		return map[string]interface{}{
+			"displayName":    "MockSummoner",
+			"puuid":          "mock-puuid",
+			"summonerLevel":  999,
+			"profileIconId":  1,
+			"mock":           true,
+			"gameName":       "Mock",
+			"tagLine":        "MOCK",
+			"summonerId":     0,
+			"accountId":      0,
+			"internalName":   "mock",
+			"lastUpdateTime": time.Now().Unix(),
+		}, nil
+	case strings.HasPrefix(endpoint, "/lol-summoner/v1/current-summoner/summoner-profile"):
+		return map[string]interface{}{
+			"displayName":   "MockSummoner",
+			"profileIconId": 1,
+			"summonerId":    0,
+			"puuid":         "mock-puuid",
+			"mock":          true,
+		}, nil
+	case strings.HasPrefix(endpoint, "/lol-match-history/v1/products/lol/current-summoner/matches"):
+		return map[string]interface{}{
+			"games": map[string]interface{}{
+				"games": []map[string]interface{}{},
+			},
+			"mock": true,
+		}, nil
+	default:
+		return map[string]interface{}{
+			"mock":     true,
+			"endpoint": endpoint,
+		}, nil
+	}
 }

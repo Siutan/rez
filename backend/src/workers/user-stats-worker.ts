@@ -128,6 +128,7 @@ class UserStatsWorker {
         riotUserName: job.riotUserName,
         riotTagLine: job.riotTagLine,
         regionId: job.regionId,
+        isCurrentUser: job.isCurrentUser ?? false,
       });
 
       // Mark job as completed

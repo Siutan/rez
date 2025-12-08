@@ -1,7 +1,101 @@
 import { turso } from '../db/turso';
-import { fetchAndParsePlayerStats } from '../db/data/user-stats';
+import { fetchAndParsePlayerStats, refreshPlayerProfile } from '../db/data/user-stats';
 import type { ParsedUserStats } from '../db/data/user-stats';
 import { userStatsUpdateQueue, determinePriority } from './update-queue';
+
+const TEN_MINUTES_MS = 10 * 60 * 1000;
+const FORTY_FIVE_MINUTES_MS = 45 * 60 * 1000;
+
+async function getLastProfileUpdateTimestamp(
+  riotUserName: string,
+  riotTagLine: string,
+  regionId: string
+): Promise<string | null> {
+  const result = await turso.execute({
+    sql: `
+      SELECT last_updated_at FROM user_profile_updates
+      WHERE riot_user_name = ? AND riot_tag_line = ? AND region_id = ?
+      LIMIT 1
+    `,
+    args: [riotUserName, riotTagLine, regionId],
+  });
+
+  const lastUpdatedRaw = result.rows[0]?.last_updated_at;
+  return typeof lastUpdatedRaw === 'string' ? lastUpdatedRaw : null;
+}
+
+async function recordProfileUpdateTimestamp(
+  riotUserName: string,
+  riotTagLine: string,
+  regionId: string,
+  timestamp: string
+) {
+  await turso.execute({
+    sql: `
+      INSERT INTO user_profile_updates (
+        riot_user_name, riot_tag_line, region_id, last_updated_at
+      ) VALUES (?, ?, ?, ?)
+      ON CONFLICT(riot_user_name, riot_tag_line, region_id) DO UPDATE SET
+        last_updated_at = excluded.last_updated_at
+    `,
+    args: [riotUserName, riotTagLine, regionId, timestamp],
+  });
+}
+
+async function maybeUpdatePlayerProfile(params: {
+  riotUserName: string;
+  riotTagLine: string;
+  regionId: string;
+  isCurrentUser?: boolean;
+}) {
+  const { riotUserName, riotTagLine, regionId, isCurrentUser = false } = params;
+
+  const lastUpdatedAt = await getLastProfileUpdateTimestamp(riotUserName, riotTagLine, regionId);
+  const now = Date.now();
+  const ageMs = lastUpdatedAt ? now - new Date(lastUpdatedAt).getTime() : Number.POSITIVE_INFINITY;
+
+  // Global cooldown: always skip if updated within the last 10 minutes
+  if (ageMs < TEN_MINUTES_MS) {
+    console.log(
+      `⏩ Skipping profile update for ${riotUserName}#${riotTagLine} (last update ${Math.round(
+        ageMs / 1000
+      )}s ago < 10m)`
+    );
+    return { updated: false, lastUpdatedAt, reason: 'cooldown' } as const;
+  }
+
+  const threshold = isCurrentUser ? TEN_MINUTES_MS : FORTY_FIVE_MINUTES_MS;
+  const shouldUpdate = !lastUpdatedAt || ageMs >= threshold;
+
+  if (!shouldUpdate) {
+    return { updated: false, lastUpdatedAt, reason: 'recent' } as const;
+  }
+
+  try {
+    console.log(
+      `🔄 Updating player profile on U.GG for ${riotUserName}#${riotTagLine} ` +
+        `(isCurrentUser=${isCurrentUser}, age=${Math.round(ageMs / 1000)}s)`
+    );
+
+    const result = await refreshPlayerProfile({ riotUserName, riotTagLine, regionId });
+
+    if (!result.success) {
+      console.warn(
+        `⚠️ U.GG profile update reported failure for ${riotUserName}#${riotTagLine}: ${result.errorReason ?? 'unknown'}`
+      );
+      return { updated: false, lastUpdatedAt, reason: 'remote-failed' } as const;
+    }
+
+    const timestamp = new Date().toISOString();
+    await recordProfileUpdateTimestamp(riotUserName, riotTagLine, regionId, timestamp);
+    console.log(`✅ Profile updated on U.GG for ${riotUserName}#${riotTagLine}`);
+
+    return { updated: true, lastUpdatedAt: timestamp, reason: 'updated' } as const;
+  } catch (err) {
+    console.error(`❌ Failed to update profile on U.GG for ${riotUserName}#${riotTagLine}:`, err);
+    return { updated: false, lastUpdatedAt, reason: 'error' } as const;
+  }
+}
 
 /**
  * Upsert user stats for a specific player
@@ -124,11 +218,22 @@ export async function fetchAndStoreUserStats(params: {
   riotUserName: string;
   riotTagLine: string;
   regionId: string;
+  isCurrentUser?: boolean;
 }) {
+  const { isCurrentUser = false, ...fetchParams } = params;
+
   console.log(`Fetching stats for ${params.riotUserName}#${params.riotTagLine}...`);
 
+  // Refresh player profile before fetching stats, respecting throttling rules
+  await maybeUpdatePlayerProfile({
+    riotUserName: params.riotUserName,
+    riotTagLine: params.riotTagLine,
+    regionId: params.regionId,
+    isCurrentUser,
+  });
+
   const stats = await fetchAndParsePlayerStats({
-    ...params,
+    ...fetchParams,
     role: 7,        // all roles
     seasonId: 25,   // current season
     queueType: [400, 420, 440], // normal draft, ranked solo, ranked flex
@@ -143,7 +248,12 @@ export async function fetchAndStoreUserStats(params: {
  * Get user stats from database by username and tagline
  * Always returns immediately from DB, queues background update if needed
  */
-export async function getUserStats(riotUserName: string, riotTagLine: string, regionId?: string) {
+export async function getUserStats(
+  riotUserName: string,
+  riotTagLine: string,
+  regionId?: string,
+  isCurrentUser: boolean = false
+) {
   const ONE_HOUR_MS = 60 * 60 * 1000;
   const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
   
@@ -191,14 +301,16 @@ export async function getUserStats(riotUserName: string, riotTagLine: string, re
 
   // Queue background update if needed
   if (needsUpdate && regionId) {
+    const queuePriority = isCurrentUser ? 'immediate' : priority;
     userStatsUpdateQueue.enqueue({
       riotUserName,
       riotTagLine,
       regionId,
-      priority,
+      isCurrentUser,
+      priority: queuePriority,
     });
     
-    console.log(`📝 Queued ${priority} priority update for ${riotUserName}#${riotTagLine} (${dataStatus})`);
+    console.log(`📝 Queued ${queuePriority} priority update for ${riotUserName}#${riotTagLine} (${dataStatus})`);
   }
 
   // Return the data (either existing fresh/stale data or empty array for missing)

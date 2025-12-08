@@ -252,31 +252,20 @@ export async function populateChampionStats() {
 
     console.log('💾 Writing to database...');
     
-    // Execute in transaction with batching
-    await turso.execute('BEGIN');
-    try {
-      // Batch champion inserts
-      console.log(`  📊 Upserting ${championBatch.length} champion records...`);
-      await turso.batch(championBatch, 'write');
-      
-      // Clear old matchups and insert new ones
-      console.log(`  🥊 Clearing old matchups...`);
-      await turso.execute('DELETE FROM worst_matchups');
-      
-      console.log(`  📊 Inserting ${matchupBatch.length} matchup records...`);
-      await turso.batch(matchupBatch, 'write');
+    // Execute everything in a single batch to avoid manual transaction issues
+    const combinedBatch: Array<{ sql: string; args: any[] }> = [
+      { sql: 'DELETE FROM worst_matchups', args: [] },
+      ...championBatch,
+      ...matchupBatch,
+    ];
 
-      // Commit transaction if everything succeeded
-      await turso.execute('COMMIT');
-    
-      
-      const elapsed = formatDuration(Date.now() - startTime);
-      console.log(`✅ Champion stats updated successfully in ${elapsed}`);
-      console.log(`   └─ ${totalChampions} champions, ${totalMatchups} matchups`);
-    } catch (err) {
-      console.error('❌ Failed to update champion stats:', err);
-      throw err;
-    }
+    console.log(`  📊 Upserting ${championBatch.length} champion records...`);
+    console.log(`  🥊 Clearing old matchups and inserting ${matchupBatch.length} new records...`);
+    await turso.batch(combinedBatch, 'write');
+
+    const elapsed = formatDuration(Date.now() - startTime);
+    console.log(`✅ Champion stats updated successfully in ${elapsed}`);
+    console.log(`   └─ ${totalChampions} champions, ${totalMatchups} matchups`);
   } catch (err) {
     const elapsed = formatDuration(Date.now() - startTime);
     console.error(`❌ Champion stats migration failed after ${elapsed}:`, err);

@@ -26,7 +26,7 @@
   let summonerData = null;
   let profileData = null;
   let matchHistoryData: { games: { games: Match[] } } = null;
-  let regionId = "na1"; // Default region
+  let regionId = "oc1"; // Default region
 
   // View state
   let currentView: "match-history" | "champ-select" = "match-history";
@@ -63,13 +63,11 @@
 
     // Champion Select Started/Updated
     const champSelectCleanup = EventsOn("lcu:champ-select", (data) => {
-      console.log("in champ select");
       handleChampSelectUpdate(data);
     });
 
     // Champion Select Ended
     const champSelectEndedCleanup = EventsOn("lcu:champ-select-ended", () => {
-      console.log("Champion Select Ended");
       exitChampSelect();
     });
 
@@ -157,15 +155,19 @@
   }
 
   function handleChampSelectUpdate(data: LcuChampSelectSession) {
-    // Validate champion select session
-    if (data && data.localPlayerCellId >= 0 && data.timer?.phase) {
-      console.log("Champion Select active:", data.timer.phase);
+    const hasTimer = data?.timer?.phase;
+    const hasActions = Array.isArray(data?.actions) && data.actions.length > 0;
+    const hasLocal = typeof data?.localPlayerCellId === "number" && data.localPlayerCellId >= 0;
+
+    // Allow mock payloads that may omit timer but still carry actions/local player.
+    if (hasLocal && (hasTimer || hasActions)) {
       champSelectData = data;
       currentView = "champ-select";
-    } else {
-      // Invalid session, return to match history
-      exitChampSelect();
+      return;
     }
+
+    // Invalid session, return to match history
+    exitChampSelect();
   }
 
   function exitChampSelect() {
@@ -301,16 +303,6 @@
     background: #4caf50;
     margin-right: 0.5rem;
     animation: pulse 2s infinite;
-  }
-
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.5;
-    }
   }
 
   /* Scrollbar styling */

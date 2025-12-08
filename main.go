@@ -2,7 +2,11 @@ package main
 
 import (
 	"embed"
+	"log"
+	"os"
+	"strings"
 
+	"github.com/joho/godotenv"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -12,8 +16,15 @@ import (
 var assets embed.FS
 
 func main() {
-	// Create an instance of the app structure
-	app := NewApp()
+	_ = godotenv.Load(".env") // optional error check
+	mockEnabled := envBool("MOCK_CHAMP_SELECT")
+	mockWS := os.Getenv("MOCK_WS_URL")
+	if mockWS == "" {
+		mockWS = "ws://127.0.0.1:18080/ws"
+	}
+
+	app := NewApp(mockEnabled, mockWS)
+	log.Println("Mock enabled:", mockEnabled)
 
 	// Create application with options
 	err := wails.Run(&options.App{
@@ -34,4 +45,9 @@ func main() {
 	if err != nil {
 		println("Error:", err.Error())
 	}
+}
+
+func envBool(name string) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
 }

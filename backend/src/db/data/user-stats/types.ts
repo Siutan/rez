@@ -43,6 +43,16 @@ export interface UGGPlayerStatsResponse {
   };
 }
 
+export interface UGGUpdatePlayerProfileResponse {
+  data: {
+    updatePlayerProfile: {
+      success: boolean;
+      errorReason?: string | null;
+      __typename?: string;
+    };
+  };
+}
+
 /**
  * AGGREGATED OUTPUT SHAPE (merged across all queues)
  */

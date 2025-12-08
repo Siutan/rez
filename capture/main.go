@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -64,17 +63,14 @@ type CaptureSession struct {
 }
 
 type ChampSelectCapturer struct {
-	connector     *LCUConnector
-	session       *CaptureSession
-	outputFile    string
-	file          *os.File
-	encoder       *json.Encoder
-	isCapturing   bool
-	mu            sync.Mutex
-	done          chan struct{}
-	shouldExit    bool
-	doneOnce      sync.Once
-	eventCountPos int64 // Position in file where eventCount is written
+	connector   *LCUConnector
+	session     *CaptureSession
+	outputFile  string
+	isCapturing bool
+	mu          sync.Mutex
+	done        chan struct{}
+	shouldExit  bool
+	doneOnce    sync.Once
 }
 
 func NewCapturer(outputFile string) *ChampSelectCapturer {
@@ -164,19 +160,12 @@ func (c *ChampSelectCapturer) Start() error {
 
 func (c *ChampSelectCapturer) handleChampSelectEvent(rawData interface{}) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	if !c.isCapturing {
 		// First event - start capturing and create file
 		c.isCapturing = true
 		fmt.Printf("\n=== Champion Select Started ===\n")
 		fmt.Println("Capturing raw events...")
-
-		// Create output file and write initial JSON structure
-		if err := c.initOutputFile(); err != nil {
-			fmt.Printf("Error initializing output file: %v\n", err)
-			return
-		}
 	}
 
 	// Capture raw event data
@@ -188,23 +177,22 @@ func (c *ChampSelectCapturer) handleChampSelectEvent(rawData interface{}) {
 	c.session.Events = append(c.session.Events, capturedEvent)
 	c.session.EventCount = len(c.session.Events)
 
-	// Append event to file immediately
-	if c.file != nil {
-		if err := c.appendEvent(capturedEvent); err != nil {
-			fmt.Printf("Error writing event to file: %v\n", err)
-		}
-	}
-
 	fmt.Printf("[%s] Event #%d captured\n",
 		capturedEvent.Timestamp,
 		c.session.EventCount)
+
+	c.mu.Unlock()
+
+	if err := c.persistSession(c.snapshotSession()); err != nil {
+		fmt.Printf("Warning: failed to persist capture: %v\n", err)
+	}
 }
 
 func (c *ChampSelectCapturer) handleChampSelectEnded() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	if !c.isCapturing {
+		c.mu.Unlock()
 		return
 	}
 
@@ -219,13 +207,6 @@ func (c *ChampSelectCapturer) handleChampSelectEnded() {
 	c.session.Events = append(c.session.Events, deleteEvent)
 	c.session.EventCount = len(c.session.Events)
 
-	// Append Delete event to file
-	if c.file != nil {
-		if err := c.appendEvent(deleteEvent); err != nil {
-			fmt.Printf("Error writing Delete event: %v\n", err)
-		}
-	}
-
 	fmt.Printf("\n=== Champion Select Ended ===\n")
 	fmt.Printf("Total events captured: %d\n", c.session.EventCount)
 
@@ -236,121 +217,6 @@ func (c *ChampSelectCapturer) handleChampSelectEnded() {
 
 	// Finalize file outside of lock
 	c.finalizeFile()
-}
-
-func (c *ChampSelectCapturer) initOutputFile() error {
-	if c.file != nil {
-		return nil // Already initialized
-	}
-
-	// Ensure output directory exists
-	dir := filepath.Dir(c.outputFile)
-	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("error creating output directory: %v", err)
-		}
-	}
-
-	// Create file
-	file, err := os.Create(c.outputFile)
-	if err != nil {
-		return fmt.Errorf("error creating output file: %v", err)
-	}
-
-	c.file = file
-	c.encoder = json.NewEncoder(file)
-	c.encoder.SetIndent("", "  ")
-
-	// Write initial JSON structure
-	// We'll update eventCount at the end
-	_, err = fmt.Fprintf(c.file, "{\n")
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(c.file, "  \"startTime\": %q,\n", c.session.StartTime)
-	if err != nil {
-		return err
-	}
-
-	// Remember position for updating eventCount later
-	c.eventCountPos, err = c.file.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return err
-	}
-
-	_, err = fmt.Fprintf(c.file, "  \"eventCount\": 0,\n") // Placeholder, will be updated
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(c.file, "  \"events\": [\n")
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *ChampSelectCapturer) appendEvent(event CapturedEvent) error {
-	if c.file == nil {
-		return fmt.Errorf("output file not initialized")
-	}
-
-	// If not the first event, add comma separator
-	if c.session.EventCount > 1 {
-		if _, err := fmt.Fprintf(c.file, ",\n"); err != nil {
-			return err
-		}
-	}
-
-	// Write event JSON
-	eventJSON, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-
-	// Write with proper indentation (2 spaces, then 4 more for nested)
-	lines := strings.Split(string(eventJSON), "\n")
-	for i, line := range lines {
-		if i == 0 {
-			if _, err := fmt.Fprintf(c.file, "    %s", line); err != nil {
-				return err
-			}
-		} else {
-			if _, err := fmt.Fprintf(c.file, "\n    %s", line); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Flush to disk immediately
-	return c.file.Sync()
-}
-
-func (c *ChampSelectCapturer) updateEventCount() error {
-	if c.file == nil || c.eventCountPos == 0 {
-		return nil
-	}
-
-	// Save current position
-	currentPos, err := c.file.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return err
-	}
-
-	// Seek to eventCount position
-	if _, err := c.file.Seek(c.eventCountPos, io.SeekStart); err != nil {
-		return err
-	}
-
-	// Write updated eventCount (overwrite the placeholder)
-	countStr := fmt.Sprintf("%d", c.session.EventCount)
-	if _, err := c.file.WriteString(countStr); err != nil {
-		return err
-	}
-
-	// Restore position
-	_, err = c.file.Seek(currentPos, io.SeekStart)
-	return err
 }
 
 func (c *ChampSelectCapturer) endSession() {
@@ -364,33 +230,13 @@ func (c *ChampSelectCapturer) endSession() {
 
 func (c *ChampSelectCapturer) finalizeFile() {
 	c.mu.Lock()
-	file := c.file
 	endTime := c.session.EndTime
 	eventCount := c.session.EventCount
 	c.mu.Unlock()
 
-	if file == nil {
-		return
+	if err := c.persistSession(c.snapshotSession()); err != nil {
+		fmt.Printf("Warning: failed to write capture: %v\n", err)
 	}
-
-	// Update eventCount
-	if err := c.updateEventCount(); err != nil {
-		fmt.Printf("Warning: failed to update event count: %v\n", err)
-	}
-
-	// Close the events array
-	fmt.Fprintf(file, "\n  ],\n")
-	if endTime != "" {
-		fmt.Fprintf(file, "  \"endTime\": %q\n", endTime)
-	}
-	fmt.Fprintf(file, "}\n")
-
-	file.Sync()
-	file.Close()
-
-	c.mu.Lock()
-	c.file = nil
-	c.mu.Unlock()
 
 	fmt.Printf("\n✓ Capture saved to: %s\n", c.outputFile)
 	fmt.Printf("  Events: %d\n", eventCount)
@@ -433,6 +279,50 @@ func (c *ChampSelectCapturer) Stop() {
 
 	// Stop connector
 	c.connector.Stop()
+}
+
+func (c *ChampSelectCapturer) snapshotSession() CaptureSession {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	eventsCopy := make([]CapturedEvent, len(c.session.Events))
+	copy(eventsCopy, c.session.Events)
+
+	return CaptureSession{
+		StartTime:  c.session.StartTime,
+		EndTime:    c.session.EndTime,
+		EventCount: c.session.EventCount,
+		Events:     eventsCopy,
+	}
+}
+
+func (c *ChampSelectCapturer) persistSession(snapshot CaptureSession) error {
+	return writeJSONAtomic(c.outputFile, snapshot)
+}
+
+func writeJSONAtomic(path string, v interface{}) error {
+	dir := filepath.Dir(path)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("error creating output directory: %v", err)
+		}
+	}
+
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return err
+	}
+
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	return os.Rename(tmp, path)
 }
 
 // LCU Connector implementation (copied from connector.go)

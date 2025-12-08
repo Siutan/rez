@@ -32,6 +32,13 @@
   watch(
     () => draft,
     () => {
+      if (!draft) {
+        championImages = {};
+        playerStats = {};
+        playerRanks = /** @type {any} */ ({});
+        loading = false;
+        return;
+      }
       loadChampionImages();
       loadPlayerStats();
       loadPlayerRanks();
@@ -65,17 +72,19 @@
       if (id > 0) championIds.add(id);
     });
 
-    // Load champion images
-    for (const id of championIds) {
+    const tasks = Array.from(championIds).map(async (id) => {
       try {
         const champData = DDragon.getChampion(id);
         if (champData && champData.id) {
-          championImages[id] = await DDragon.getChampionIcon(champData.id);
+          const icon = await DDragon.getChampionIcon(champData.id);
+          championImages[id] = icon;
         }
       } catch (err) {
         console.error(`Failed to load champion ${id}:`, err);
       }
-    }
+    });
+
+    await Promise.all(tasks);
     championImages = { ...championImages };
     loading = false;
   }
@@ -95,13 +104,17 @@
 
     if (inputs.length === 0) return;
 
-    const res = await fetchSummonerRanks(inputs);
-    if (res.success && res.data) {
-      const map: Record<string, SummonerRankResult> = {};
-      for (const entry of res.data) {
-        map[`${entry.riotUserName}#${entry.riotTagLine}`] = entry;
+    try {
+      const res = await fetchSummonerRanks(inputs);
+      if (res.success && res.data) {
+        const map: Record<string, SummonerRankResult> = {};
+        for (const entry of res.data) {
+          map[`${entry.riotUserName}#${entry.riotTagLine}`] = entry;
+        }
+        playerRanks = map;
       }
-      playerRanks = map;
+    } catch (err) {
+      console.error("Failed to load player ranks", err);
     }
   }
 
@@ -139,15 +152,8 @@
     const results = await Promise.all(playerPromises);
     
     // Process results
-    results.forEach(({ playerKey, data, status }) => {
+    results.forEach(({ playerKey, data }) => {
       newPlayerStats[playerKey] = data;
-      
-      // Log status for debugging
-      if (status === 'stale' || status === 'expired') {
-        console.log(`📊 ${playerKey}: Using ${status} data (background update queued)`);
-      } else if (status === 'missing') {
-        console.log(`📊 ${playerKey}: No data available (background update queued)`);
-      }
     });
 
     playerStats = newPlayerStats;
@@ -155,8 +161,6 @@
 
   const myTeam = $derived(draft?.myTeam || []);
   const theirTeam = $derived(draft?.theirTeam || []);
-  const myBans = $derived(draft?.bans?.myTeamBans || []);
-  const theirBans = $derived(draft?.bans?.theirTeamBans || []);
   const localPlayerCellId = $derived(draft?.localPlayerCellId || -1);
 </script>
 

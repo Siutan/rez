@@ -40,7 +40,7 @@
       <section
         class="w-[400px] border border-neutral-800 rounded-lg bg-neutral-950 p-2"
       >
-        <ChampSelectView draft={selectedDraft} regionId="na1" />
+        <ChampSelectView draft={selectedDraft} regionId="na1" useMockStats={false} />
       </section>
     {:else}
       <p class="text-sm text-neutral-400">No preview state selected.</p>

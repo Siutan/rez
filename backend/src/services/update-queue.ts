@@ -5,6 +5,7 @@ export interface UserStatsUpdateJob {
   riotUserName: string;
   riotTagLine: string;
   regionId: string;
+  isCurrentUser?: boolean;
   priority: 'immediate' | 'high' | 'low';
   createdAt: number;
   attempts: number;
@@ -34,6 +35,7 @@ class UserStatsUpdateQueue {
     riotUserName: string;
     riotTagLine: string;
     regionId: string;
+    isCurrentUser?: boolean;
     priority?: 'immediate' | 'high' | 'low';
   }): string {
     const jobId = this.makeJobId(params.riotUserName, params.riotTagLine, params.regionId);
@@ -49,6 +51,7 @@ class UserStatsUpdateQueue {
       riotUserName: params.riotUserName,
       riotTagLine: params.riotTagLine,
       regionId: params.regionId,
+      isCurrentUser: params.isCurrentUser,
       priority: params.priority || 'low',
       createdAt: Date.now(),
       attempts: 0,

@@ -72,7 +72,7 @@
         <span class="text-neutral-600">•</span>
         {#if gamesPlayed !== null}
           <span class="text-teal-300">
-            {championStats?.avg_damage.toFixed(1)}K DMG
+            {Intl.NumberFormat('en-US', { notation: 'compact' }).format(championStats?.avg_damage ?? 0) ?? "0.0"} DMG
           </span>
         {/if}
       </div>
@@ -83,8 +83,9 @@
           <img src={rankIcon} alt="Rank" class="w-4 h-4 rounded-sm" />
         {/if}
         {#if kda !== null}
+          {@const cs = Intl.NumberFormat('en-US', { notation: 'compact' }).format(championStats?.avg_cs ?? 0)}
           <span class="text-teal-300">
-            {(championStats?.avg_cs).toFixed(1)} CS
+            {(Math.round(Number.parseInt(cs))/30).toFixed(1)} CS
           </span>
           <span class="text-neutral-600">•</span>
           <span>

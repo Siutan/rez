@@ -40,5 +40,15 @@ export async function createUserStatsSchema() {
     )
   `);
 
+  await turso.execute(`
+    CREATE TABLE IF NOT EXISTS user_profile_updates (
+      riot_user_name   TEXT    NOT NULL,
+      riot_tag_line    TEXT    NOT NULL,
+      region_id        TEXT    NOT NULL,
+      last_updated_at  TEXT    NOT NULL,
+      PRIMARY KEY (riot_user_name, riot_tag_line, region_id)
+    )
+  `);
+
   console.log('✅ User champion stats schema created');
 }
